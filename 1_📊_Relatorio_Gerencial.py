@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from io import BytesIO
 
 # --- IMPORTAÇÃO DO UTILS ---
-# Removemos o try/except para mostrar erros reais se acontecerem
 from utils import check_password, logout_button
 
 # --- CONFIGURAÇÕES ---
@@ -50,8 +49,6 @@ HEADERS = {
 def format_sla_string(seconds):
     """
     Converte segundos em formato legível.
-    - Se for longo: 1d 2h 30m
-    - Se for curto (menos de 1h): 15m 30s
     """
     if not seconds or pd.isna(seconds) or seconds == 0:
         return "-"
@@ -70,7 +67,6 @@ def format_sla_string(seconds):
     if hours > 0: parts.append(f"{hours}h")
     if minutes > 0: parts.append(f"{minutes}m")
     
-    # Exibe segundos apenas se for menos de 1 hora
     if days == 0 and hours == 0:
         parts.append(f"{secs}s")
     
@@ -262,26 +258,16 @@ if btn_run:
     start, end = periodo
     ids_times = [int(x.strip()) for x in team_input.split(",") if x.strip().isdigit()] if team_input else None
     
-    with st.spinner("Analisando dados atuais e passados..."):
+    with st.spinner("Analisando dados..."):
         mapa = get_attribute_definitions()
         admins_map = get_all_admins()
         
-        # 1. Busca Período Atual
+        # Busca Apenas Período Atual (Otimizado)
         raw = fetch_conversations(start, end, ids_times)
-        
-        # 2. Busca Período Anterior (Para Delta)
-        delta_days = (end - start).days + 1
-        prev_end = start - timedelta(days=1)
-        prev_start = prev_end - timedelta(days=delta_days - 1)
-        
-        raw_prev = fetch_conversations(prev_start, prev_end, ids_times)
         
         if raw:
             df = process_data(raw, mapa, admins_map)
-            df_prev = process_data(raw_prev, mapa, admins_map) if raw_prev else pd.DataFrame()
-            
             st.session_state['df_final'] = df
-            st.session_state['df_prev'] = df_prev 
             
             try:
                 st.toast(f"✅ Sucesso! {len(df)} conversas carregadas.")
@@ -293,7 +279,6 @@ if btn_run:
 
 if 'df_final' in st.session_state:
     df = st.session_state['df_final']
-    df_prev = st.session_state.get('df_prev', pd.DataFrame())
     
     st.divider()
     
@@ -324,8 +309,8 @@ if 'df_final' in st.session_state:
     else:
         df["Qtd. Atributos"] = 0
 
-    # --- RESUMO EXECUTIVO COM DELTA (5 COLUNAS) ---
-    st.markdown("### 📌 Resumo do Período")
+    # --- RESUMO EXECUTIVO (SEM DELTA) ---
+    st.markdown("### 📌 Resumo do Período Selecionado")
     
     kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
     
@@ -333,79 +318,17 @@ if 'df_final' in st.session_state:
     total_conv = len(df)
     preenchidos = df["Motivo de Contato"].notna().sum() if "Motivo de Contato" in df.columns else 0
     
-    total_conv_prev = len(df_prev)
-    preenchidos_prev = df_prev["Motivo de Contato"].notna().sum() if "Motivo de Contato" in df_prev.columns else 0
-    
-    delta_total = total_conv - total_conv_prev
-    delta_preenchidos = preenchidos - preenchidos_prev
-    
     # 2. KPI de Resolvidos
     resolvidos = 0
-    resolvidos_prev = 0
     if "Status do atendimento" in df.columns:
         resolvidos = df[df["Status do atendimento"] == "Resolvido"].shape[0]
-    if not df_prev.empty and "Status do atendimento" in df_prev.columns:
-        resolvidos_prev = df_prev[df_prev["Status do atendimento"] == "Resolvido"].shape[0]
-    
-    delta_resolvidos = resolvidos - resolvidos_prev
     
     # 3. KPI de Tempo (Média)
     col_tempo_seg = "Tempo Resolução (seg)"
     tempo_medio_seg = df[col_tempo_seg].mean() if col_tempo_seg in df.columns else 0
-    tempo_medio_prev_seg = df_prev[col_tempo_seg].mean() if not df_prev.empty and col_tempo_seg in df_prev.columns else 0
-    
-    delta_tempo_seg = tempo_medio_seg - tempo_medio_prev_seg
-    
     tempo_str = format_sla_string(tempo_medio_seg)
-    tempo_prev_str = format_sla_string(tempo_medio_prev_seg)
-    delta_str_human = format_sla_string(abs(delta_tempo_seg))
     
-    # Formatação visual do Delta de Tempo
-    delta_exibicao = None
-    if delta_tempo_seg > 0: 
-        delta_exibicao = f"{delta_str_human}" # Piorou (Aumentou)
-    elif delta_tempo_seg < 0: 
-        delta_exibicao = f"-{delta_str_human}" # Melhorou (Diminuiu)
-    else: 
-        delta_exibicao = "0s"
-
-    # --- EXIBIÇÃO COM TOOLTIPS EXPLICATIVOS ---
-    
-    # KPI 1: Total
-    kpi1.metric(
-        "Total Conversas", 
-        total_conv, 
-        delta=delta_total,
-        delta_color="inverse", # Menos chamados = Verde
-        help=f"Período Anterior: {total_conv_prev} | Atual: {total_conv}"
-    )
-    
-    # KPI 2: Classificados
-    kpi2.metric(
-        "Classificados", 
-        f"{preenchidos}", 
-        delta=delta_preenchidos,
-        help=f"Período Anterior: {preenchidos_prev} | Atual: {preenchidos}"
-    )
-    
-    # KPI 3: Resolvidos
-    kpi3.metric(
-        "Resolvidos", 
-        resolvidos, 
-        delta=delta_resolvidos,
-        help=f"Período Anterior: {resolvidos_prev} | Atual: {resolvidos}"
-    )
-    
-    # KPI 4: Tempo Médio
-    kpi4.metric(
-        "Tempo Médio", 
-        tempo_str, 
-        delta=delta_exibicao, 
-        delta_color="inverse", # Menos tempo = Verde
-        help=f"Anterior: {tempo_prev_str} ➡ Atual: {tempo_str}"
-    )
-    
-    # KPI 5: Motivo Principal
+    # 4. KPI Motivo Principal
     top_motivo_txt = "N/A"
     qtd_top = 0
     if "Motivo de Contato" in df.columns:
@@ -414,13 +337,13 @@ if 'df_final' in st.session_state:
             full_name = counts.index[0]
             qtd_top = counts.values[0]
             top_motivo_txt = str(full_name).split(">")[-1].strip()
-            
-    kpi5.metric(
-        "Principal Motivo",
-        top_motivo_txt,
-        f"{qtd_top} casos",
-        delta_color="off" 
-    )
+
+    # --- EXIBIÇÃO ---
+    kpi1.metric("Total Conversas", total_conv)
+    kpi2.metric("Classificados", f"{preenchidos}")
+    kpi3.metric("Resolvidos", resolvidos)
+    kpi4.metric("Tempo Médio", tempo_str)
+    kpi5.metric("Principal Motivo", top_motivo_txt, f"{qtd_top} casos", delta_color="off")
 
     st.divider()
 
