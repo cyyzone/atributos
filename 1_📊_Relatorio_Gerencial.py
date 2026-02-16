@@ -243,31 +243,27 @@ if 'df_final' in st.session_state:
     st.divider()
 
     # --- ABAS ---
+    # Aqui estava o problema do nome: tab_graf vs tab_grafico. Agora está tudo padronizado.
     tab_graf, tab_equipe, tab_cross, tab_motivos, tab_csat, tab_tempo, tab_tabela = st.tabs(["📊 Distribuição", "👥 Equipe & Performance", "🔀 Cruzamentos", "🔗 Top Motivos", "⭐ CSAT / DSAT", "⏱️ SLA", "📋 Dados"])
 
-    with tab_grafico:
+    with tab_graf:
         c1, c2 = st.columns([2, 1])
         
-        # --- PREPARAÇÃO DOS DADOS (FONTE ÚNICA) ---
         if cols_usuario:
             graf_sel = st.selectbox("Atributo:", cols_usuario, key="sel_graf_dist")
             
-            # 1. Filtra vazios
+            # Fonte única
             df_clean = df[df[graf_sel].notna()]
-            
-            # 2. Conta e cria o DataFrame mestre
             contagem = df_clean[graf_sel].value_counts().reset_index()
-            contagem.columns = ["Opção", "Qtd"] # Renomeia para ficar bonito
+            contagem.columns = ["Opção", "Qtd"]
             
-            # 3. Calcula Porcentagem para o Rótulo
             total_registros = contagem["Qtd"].sum()
             contagem["Label"] = contagem.apply(lambda x: f"{x['Qtd']} ({(x['Qtd']/total_registros*100):.1f}%)", axis=1)
             
-            # 4. Ordenação Decrescente (Maior para o Menor) para a Tabela ficar certa
+            # Ordena DESC (Maior -> Menor)
             contagem = contagem.sort_values("Qtd", ascending=False).reset_index(drop=True)
 
             with c1:
-                # O GRÁFICO (Lê do 'contagem')
                 fig = px.bar(
                     contagem, 
                     x="Qtd", 
@@ -275,20 +271,14 @@ if 'df_final' in st.session_state:
                     text="Label", 
                     orientation='h', 
                     title=f"Distribuição: {graf_sel}",
-                    height=max(400, len(contagem) * 35) # Altura dinâmica
+                    height=max(400, len(contagem) * 35)
                 )
-                # 'categoryorder':'total ascending' faz o maior valor ficar no TOPO visualmente
                 fig.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig, use_container_width=True)
                 
             with c2:
-                # A TABELA (Lê EXATAMENTE o mesmo 'contagem')
                 st.write("**Ranking:**")
-                st.dataframe(
-                    contagem[["Opção", "Qtd"]], # Mostra só o que importa
-                    use_container_width=True,
-                    hide_index=True
-                )
+                st.dataframe(contagem[["Opção", "Qtd"]], use_container_width=True, hide_index=True)
         else:
             st.warning("Selecione atributos no topo da página.")
 
@@ -301,7 +291,7 @@ if 'df_final' in st.session_state:
         
         st.divider()
         
-        # 2. Matriz de Eficiência (Scatter Plot)
+        # 2. Matriz de Eficiência
         st.subheader("🚀 Matriz de Eficiência: Volume x Tempo")
         st.info("💡 **Como ler:** Analistas no canto **inferior direito** atendem muito e rápido. No **superior esquerdo**, atendem pouco e demoram (atenção).")
         
@@ -321,50 +311,44 @@ if 'df_final' in st.session_state:
                 text="Atendente",
                 size="Volume",
                 color="Tempo_Medio_Seg",
-                color_continuous_scale="RdYlGn_r", # Verde = Tempo Baixo
+                color_continuous_scale="RdYlGn_r", 
                 hover_data=["Tempo Médio"],
                 title="Relação: Quem atende mais vs Quem demora mais"
             )
-            # Linhas de média
             media_vol = df_perf["Volume"].mean()
             media_tempo = df_perf["Tempo_Medio_Seg"].mean()
-            
             fig_scatter.add_vline(x=media_vol, line_dash="dash", line_color="gray", annotation_text="Média Vol.")
             fig_scatter.add_hline(y=media_tempo, line_dash="dash", line_color="gray", annotation_text="Média Tempo")
-            
             st.plotly_chart(fig_scatter, use_container_width=True)
         else:
-            st.warning("Dados de tempo não disponíveis para gerar a matriz.")
+            st.warning("Dados de tempo não disponíveis.")
 
     with tab_cross:
         def plot_stack(df_in, x_col, color_col, title):
             g = df_in.groupby([x_col, color_col]).size().reset_index(name='Qtd')
             g['Total'] = g.groupby(x_col)['Qtd'].transform('sum')
             g['Pct'] = g.apply(lambda x: f"{(x['Qtd']/x['Total']*100):.0f}%", axis=1)
-            f = px.bar(g, y=x_col, x='Qtd', color=color_col, text='Pct', orientation='h', title=title)
-            f.update_layout(yaxis={'categoryorder':'total ascending'})
+            # AQUI ESTÁ A MUDANÇA: Gráfico Vertical (bar em vez de barh)
+            # x=x_col (Categoria no eixo X)
+            # y='Qtd' (Altura da barra)
+            f = px.bar(g, x=x_col, y='Qtd', color=color_col, text='Pct', title=title)
             return f
 
-        # GRÁFICO 1: STATUS X MOTIVO (Vertical)
+        st.subheader("1. Status por Motivo")
         if "Motivo de Contato" in df.columns and "Status do atendimento" in df.columns:
-            st.plotly_chart(plot_stack(df.dropna(subset=["Motivo de Contato", "Status do atendimento"]), "Motivo de Contato", "Status do atendimento", "1. Status por Motivo"), use_container_width=True)
+            st.plotly_chart(plot_stack(df.dropna(subset=["Motivo de Contato", "Status do atendimento"]), "Motivo de Contato", "Status do atendimento", ""), use_container_width=True)
         
         st.divider()
 
-        # GRÁFICO 2: TIPO X MOTIVO (Vertical)
+        st.subheader("2. Tipo por Motivo")
         if "Motivo de Contato" in df.columns and "Tipo de Atendimento" in df.columns:
-            st.plotly_chart(plot_stack(df.dropna(subset=["Motivo de Contato", "Tipo de Atendimento"]), "Motivo de Contato", "Tipo de Atendimento", "2. Tipo por Motivo"), use_container_width=True)
+            st.plotly_chart(plot_stack(df.dropna(subset=["Motivo de Contato", "Tipo de Atendimento"]), "Motivo de Contato", "Tipo de Atendimento", ""), use_container_width=True)
         
         st.divider()
         
-        # GRÁFICO 3: TIPO X STATUS (Eficiência por Canal)
         st.subheader("3. Eficiência por Canal (Tipo x Status)")
-        st.caption("Entenda qual canal tem mais resolução e qual tem mais abandono.")
-        
         if "Tipo de Atendimento" in df.columns and "Status do atendimento" in df.columns:
-            st.plotly_chart(plot_stack(df.dropna(subset=["Tipo de Atendimento", "Status do atendimento"]), "Tipo de Atendimento", "Status do atendimento", "Status por Canal de Entrada"), use_container_width=True)
-        else:
-            st.info("Necessário ter 'Tipo de Atendimento' e 'Status do atendimento'.")
+            st.plotly_chart(plot_stack(df.dropna(subset=["Tipo de Atendimento", "Status do atendimento"]), "Tipo de Atendimento", "Status do atendimento", ""), use_container_width=True)
 
     with tab_motivos:
         col_m1, col_m2 = "Motivo de Contato", "Motivo 2 (Se houver)"
@@ -387,11 +371,11 @@ if 'df_final' in st.session_state:
 
     with tab_csat:
         if "CSAT Nota" not in df.columns:
-             st.warning("Gere os dados novamente.")
+             st.warning("Sem dados.")
         else:
             df_csat = df.dropna(subset=["CSAT Nota"])
             if df_csat.empty:
-                st.info("Sem CSAT.")
+                st.info("Sem avaliações.")
             else:
                 k1, k2 = st.columns(2)
                 k1.metric("Média Geral CSAT", f"{df_csat['CSAT Nota'].mean():.2f}/5.0")
@@ -399,7 +383,6 @@ if 'df_final' in st.session_state:
                 
                 st.divider()
                 
-                # --- CONTROLES COM CORREÇÃO DE LÓGICA ---
                 ordem_csat = st.radio(
                     "Ordenar Gráfico por:", 
                     ["Melhores Notas Primeiro (Ranking)", "Piores Notas Primeiro (Foco DSat)"], 
@@ -409,12 +392,16 @@ if 'df_final' in st.session_state:
                 
                 eh_dsat = "Piores" in ordem_csat
                 
-                # CORREÇÃO DA LÓGICA DE ORDENAÇÃO:
-                # Inverti a lógica anterior que estava dando "ao contrário"
+                # CORREÇÃO DEFINITIVA DA ORDENAÇÃO
                 if eh_dsat:
-                    ascending_bool = True  # Para DSAT (1.0 no Topo) -> Tenta Ascending
+                    # Se quer Piores (1.0) no Topo -> Ordena Ascending (1..5) -> Plotly inverte e põe 1 no topo (se categoryorder nao interferir)
+                    # Teste prático: No Plotly H, a ordem padrão é de baixo pra cima.
+                    # Se mandarmos [5, 4, 3, 2, 1], o 1 fica no topo. (Descending)
+                    ascending_bool = False 
                 else:
-                    ascending_bool = False # Para Ranking (5.0 no Topo) -> Tenta Descending
+                    # Se quer Melhores (5.0) no Topo
+                    # Se mandarmos [1, 2, 3, 4, 5], o 5 fica no topo. (Ascending)
+                    ascending_bool = True
                 
                 if "Motivo de Contato" in df.columns:
                     csat_motivo = df_csat.groupby("Motivo de Contato")["CSAT Nota"].mean().reset_index()
@@ -437,7 +424,6 @@ if 'df_final' in st.session_state:
                     
                     st.divider()
                     
-                    # GRÁFICO 2: VOLUME
                     st.subheader("Volume de Avaliações por Nota e Motivo")
                     df_csat["Nota Label"] = df_csat["CSAT Nota"].astype(int).astype(str)
                     
@@ -464,7 +450,6 @@ if 'df_final' in st.session_state:
         if col_res in df.columns:
             df_t = df.dropna(subset=[col_res])
             if not df_t.empty:
-                # Ranking Agentes
                 st.subheader("⚡ Velocidade por Agente")
                 tag = df_t.groupby("Atendente")[col_res].mean().reset_index().sort_values(col_res)
                 tag["Label"] = tag[col_res].apply(format_sla_string)
@@ -474,31 +459,17 @@ if 'df_final' in st.session_state:
                 
                 st.divider()
                 
-                # NOVO: RESTAURADO GRÁFICO TEMPO X MOTIVO
                 st.subheader("🐢 Motivos mais demorados (Média de Resolução)")
                 if "Motivo de Contato" in df.columns:
-                    # Agrupa e ordena para que os mais lentos fiquem no TOPO do gráfico (ascending=True no sort põe maior valor no fim da lista, que o Plotly põe no topo)
                     t_motivo = df_t.groupby("Motivo de Contato")[col_res].mean().reset_index().sort_values(col_res, ascending=True)
                     t_motivo["Label"] = t_motivo[col_res].apply(format_sla_string)
-                    
                     h_dyn = max(400, len(t_motivo) * 30)
-                    
-                    fig_tm = px.bar(
-                        t_motivo, 
-                        x=col_res, 
-                        y="Motivo de Contato", 
-                        text="Label", 
-                        orientation='h', 
-                        height=h_dyn,
-                        title="Tempo Médio por Motivo"
-                    )
+                    fig_tm = px.bar(t_motivo, x=col_res, y="Motivo de Contato", text="Label", orientation='h', height=h_dyn, title="Tempo Médio por Motivo")
                     fig_tm.update_xaxes(showticklabels=False)
                     st.plotly_chart(fig_tm, use_container_width=True)
-                
             else: st.warning("Sem dados de tempo.")
 
     with tab_tabela:
         excel = gerar_excel_multias(df, cols_usuario)
         st.download_button("📥 Baixar Excel Completo", data=excel, file_name="relatorio_gerencial.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
-        
         st.dataframe(df[["Data", "Atendente", "Tempo Resolução"] + cols_usuario], use_container_width=True)
