@@ -87,6 +87,7 @@ def fetch_my_conversations(start_date, end_date, admin_id):
     ts_start = int(datetime.combine(start_date, datetime.min.time()).timestamp())
     ts_end = int(datetime.combine(end_date, datetime.max.time()).timestamp())
     
+    # 1. Filtros da API (O Grosso)
     query_rules = [
         {"field": "created_at", "operator": ">", "value": ts_start},
         {"field": "created_at", "operator": "<", "value": ts_end},
@@ -100,7 +101,7 @@ def fetch_my_conversations(start_date, end_date, admin_id):
         "pagination": {"per_page": 150}
     }
     
-    conversas = []
+    conversas_validas = [] # Lista final limpa
     has_more = True
     
     bar = st.progress(0, text="Buscando conversas fechadas...")
@@ -110,9 +111,21 @@ def fetch_my_conversations(start_date, end_date, admin_id):
             resp = requests.post(url, headers=HEADERS, json=payload)
             data = resp.json()
             batch = data.get('conversations', [])
-            conversas.extend(batch)
             
-            bar.progress(50, text=f"Baixado: {len(conversas)} conversas...")
+            # --- FILTRO FINO (PYTHON) ---
+            # Aqui jogamos fora o que é Backoffice
+            for c in batch:
+                attrs = c.get('custom_attributes', {})
+                categoria = attrs.get('Ticket category')
+                
+                # SE FOR BACKOFFICE, PULA! (IGNORA)
+                if categoria == "Back-office ticket":
+                    continue 
+                
+                # Se passou no teste, adiciona na lista
+                conversas_validas.append(c)
+            
+            bar.progress(50, text=f"Baixado: {len(conversas_validas)} conversas válidas...")
             
             if data.get('pages', {}).get('next'):
                 payload['pagination']['starting_after'] = data['pages']['next']['starting_after']
@@ -123,7 +136,7 @@ def fetch_my_conversations(start_date, end_date, admin_id):
             break
             
     bar.empty()
-    return conversas
+    return conversas_validas
 
 # --- INTERFACE DO ANALISTA ---
 
