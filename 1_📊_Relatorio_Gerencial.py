@@ -246,6 +246,7 @@ if 'df_final' in st.session_state:
     tab_graf, tab_equipe, tab_cross, tab_motivos, tab_csat, tab_tempo, tab_tabela = st.tabs(["📊 Distribuição", "👥 Equipe & Performance", "🔀 Cruzamentos", "🔗 Top Motivos", "⭐ CSAT / DSAT", "⏱️ SLA", "📋 Dados"])
 
     with tab_graf:
+        # --- FILTROS NO TOPO ---
         c_filt1, c_filt2 = st.columns([3, 1])
         with c_filt1:
             graf_sel = st.selectbox("Selecione o Atributo:", cols_usuario, key="sel_graf_dist")
@@ -361,12 +362,35 @@ if 'df_final' in st.session_state:
                 st.divider()
                 
                 if "Motivo de Contato" in df.columns:
-                    # Order Ascending = Menor para Maior (Foco DSat/Notas Baixas)
-                    csat_motivo = df_csat.groupby("Motivo de Contato")["CSAT Nota"].mean().reset_index()
-                    csat_motivo = csat_motivo.sort_values("CSAT Nota", ascending=False) # Plotly inverte no Horizontal, então False põe os menores no topo
-                    h_csat = max(600, len(csat_motivo) * 50)
+                    # 1. Agrupa e calcula Média + Count
+                    csat_summary = df_csat.groupby("Motivo de Contato")["CSAT Nota"].agg(['mean', 'count']).reset_index()
+                    csat_summary.columns = ["Motivo de Contato", "Média", "Qtd"]
+                    
+                    # 2. Ordena DECERSCENTE (Maior -> Menor).
+                    # No Plotly Horizontal, o último item do DF aparece no TOPO.
+                    # Queremos 1.0 no topo.
+                    # Se DF = [5, 4, 3, 2, 1] -> 1 fica no topo.
+                    # Então ordenamos descending.
+                    csat_summary = csat_summary.sort_values("Média", ascending=False)
+                    
+                    # 3. Rótulo com a quantidade
+                    csat_summary["Label"] = csat_summary.apply(lambda x: f"{x['Média']:.2f} ({int(x['Qtd'])} av.)", axis=1)
+                    
+                    h_csat = max(600, len(csat_summary) * 50)
 
-                    fig_csat = px.bar(csat_motivo, x="CSAT Nota", y="Motivo de Contato", orientation='h', text_auto='.2f', color="CSAT Nota", color_continuous_scale="RdYlGn", range_color=[1, 5], height=h_csat)
+                    fig_csat = px.bar(
+                        csat_summary, 
+                        x="Média", 
+                        y="Motivo de Contato", 
+                        orientation='h', 
+                        text="Label", 
+                        color="Média", 
+                        color_continuous_scale="RdYlGn", 
+                        range_color=[1, 5], 
+                        height=h_csat,
+                        title="Média de CSAT por Motivo (Menores notas no topo)"
+                    )
+                    
                     fig_csat.update_layout(coloraxis_showscale=False)
                     st.plotly_chart(fig_csat, use_container_width=True)
 
