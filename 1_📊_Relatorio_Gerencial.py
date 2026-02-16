@@ -360,7 +360,13 @@ if 'df_final' in st.session_state:
                 
                 st.divider()
                 
-                ordem_csat = st.radio("Ordenar Gráfico por:", ["Melhores Notas Primeiro (Ranking)", "Piores Notas Primeiro (Foco DSat)"], horizontal=True, key="radio_ordem_csat")
+                # --- CORREÇÃO DO "PULO" ---
+                # Troquei st.radio por st.selectbox. É mais estável.
+                ordem_csat = st.selectbox(
+                    "Ordenar Gráfico por:", 
+                    ["Melhores Notas Primeiro (Ranking)", "Piores Notas Primeiro (Foco DSat)"], 
+                    key="sel_ordem_csat_v2" # Key nova para evitar conflitos
+                )
                 
                 eh_dsat = "Piores" in ordem_csat
                 ascending_bool = False if eh_dsat else True
@@ -417,33 +423,38 @@ if 'df_final' in st.session_state:
             else: st.warning("Sem dados de tempo.")
 
     with tab_tabela:
-        # --- LAYOUT DE FILTROS ---
+        # --- NOVO: FILTROS + BOTÃO DE EXPORTAR NA MESMA LINHA ---
         c_filter, c_export = st.columns([3, 1])
         
         with c_filter:
-            # Filtro de Analista
+            # 1. Filtro de Analista (NOVIDADE)
             agentes_unicos = sorted(df["Atendente"].astype(str).unique())
-            sel_agentes = st.multiselect("Filtrar por Analista:", agentes_unicos)
+            sel_agentes = st.multiselect("Filtrar por Analista:", agentes_unicos, key="sel_agente_final")
 
         with c_export:
-            # Botão de Exportar
-            st.write("") # Espaço para alinhar verticalmente com o input
+            # Botão de Exportar alinhado
+            st.write("") 
             excel = gerar_excel_multias(df, cols_usuario)
             st.download_button("📥 Baixar Excel", data=excel, file_name="relatorio_gerencial.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
 
-        # Aplica o filtro
+        # Aplica o filtro na visualização
         df_view = df.copy()
         if sel_agentes:
             df_view = df_view[df_view["Atendente"].isin(sel_agentes)]
         
-        # Define colunas (Incluindo Link)
+        # 2. Link Clicável (NOVIDADE)
+        # Define as colunas que vão aparecer
         cols_display = ["Data", "Atendente", "Link", "Tempo Resolução"] + cols_usuario
+        cols_existentes = [c for c in cols_display if c in df_view.columns]
         
         st.dataframe(
-            df_view[cols_display], 
+            df_view[cols_existentes], 
             use_container_width=True, 
             hide_index=True,
             column_config={
-                "Link": st.column_config.LinkColumn("Link", display_text="🔗 Abrir Conversa")
+                "Link": st.column_config.LinkColumn(
+                    "Link", 
+                    display_text="🔗 Abrir Conversa" # Texto bonito em vez da URL feia
+                )
             }
         )
