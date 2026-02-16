@@ -256,22 +256,22 @@ if 'df_final' in st.session_state:
         if cols_usuario:
             c1, c2 = st.columns([2, 1])
             
-            # Fonte única
             df_clean = df[df[graf_sel].notna()]
             contagem = df_clean[graf_sel].value_counts().reset_index()
             contagem.columns = ["Opção", "Qtd"]
             
-            # --- APLICANDO O FILTRO TOP N ---
-            contagem = contagem.head(qtd_dist) # Pega apenas os primeiros N itens
+            # Top N
+            contagem = contagem.head(qtd_dist) 
             
-            total_registros = contagem["Qtd"].sum() # Recalcula total com base no filtro ou total geral? Geralmente mantemos % do visualizado
-            
+            total_registros = contagem["Qtd"].sum()
             contagem["Label"] = contagem.apply(lambda x: f"{x['Qtd']} ({(x['Qtd']/total_registros*100):.1f}%)", axis=1)
             
-            # Ordena DESC (Maior -> Menor)
             contagem = contagem.sort_values("Qtd", ascending=False).reset_index(drop=True)
 
             with c1:
+                # --- AUMENTO DE TAMANHO ---
+                altura_graf = max(600, len(contagem) * 50) # Mínimo 600px, 50px por item
+                
                 fig = px.bar(
                     contagem, 
                     x="Qtd", 
@@ -279,7 +279,7 @@ if 'df_final' in st.session_state:
                     text="Label", 
                     orientation='h', 
                     title=f"Distribuição: {graf_sel} (Top {qtd_dist})",
-                    height=max(400, len(contagem) * 35)
+                    height=altura_graf
                 )
                 fig.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig, use_container_width=True)
@@ -294,7 +294,9 @@ if 'df_final' in st.session_state:
         st.subheader("Volume de Conversas")
         vol = df['Atendente'].value_counts().reset_index()
         vol.columns = ['Agente', 'Volume']
-        st.plotly_chart(px.bar(vol, x='Agente', y='Volume', text='Volume'), use_container_width=True)
+        
+        # --- AUMENTO DE TAMANHO ---
+        st.plotly_chart(px.bar(vol, x='Agente', y='Volume', text='Volume', height=500), use_container_width=True)
         
         st.divider()
         
@@ -310,6 +312,7 @@ if 'df_final' in st.session_state:
             df_perf = df_perf[df_perf['Tempo_Medio_Seg'] > 0]
             df_perf['Tempo Médio'] = df_perf['Tempo_Medio_Seg'].apply(format_sla_string)
             
+            # --- AUMENTO DE TAMANHO ---
             fig_scatter = px.scatter(
                 df_perf, 
                 x="Volume", 
@@ -319,7 +322,8 @@ if 'df_final' in st.session_state:
                 color="Tempo_Medio_Seg",
                 color_continuous_scale="RdYlGn_r", 
                 hover_data=["Tempo Médio"],
-                title="Relação: Quem atende mais vs Quem demora mais"
+                title="Relação: Quem atende mais vs Quem demora mais",
+                height=700 # Altura fixa grande
             )
             media_vol = df_perf["Volume"].mean()
             media_tempo = df_perf["Tempo_Medio_Seg"].mean()
@@ -330,7 +334,6 @@ if 'df_final' in st.session_state:
             st.warning("Dados de tempo não disponíveis.")
 
     with tab_cross:
-        # --- FILTRO SLIDER ---
         qtd_cross = st.slider("Quantidade de itens no Ranking:", 5, 50, 10, key="slider_cross")
 
         def plot_stack(df_in, x_col, color_col, title, limit=10):
@@ -341,7 +344,8 @@ if 'df_final' in st.session_state:
             g['Total'] = g.groupby(x_col)['Qtd'].transform('sum')
             g['Pct'] = g.apply(lambda x: f"{(x['Qtd']/x['Total']*100):.0f}%", axis=1)
 
-            h_dyn = max(400, len(top_n) * 35)
+            # --- AUMENTO DE TAMANHO ---
+            h_dyn = max(600, len(top_n) * 50) # Mínimo 600px, 50px por item
             
             f = px.bar(
                 g, 
@@ -381,7 +385,10 @@ if 'df_final' in st.session_state:
             total_abs = rank["Total"].sum()
             rank_cut["Label"] = rank_cut["Total"].apply(lambda x: f"{x} ({(x/total_abs*100):.1f}%)")
             
-            fig_glob = px.bar(rank_cut, x="Total", y="Motivo", orientation='h', text="Label", title=f"Top {qtd_top} Motivos de Contato", height=max(400, qtd_top*40))
+            # --- AUMENTO DE TAMANHO ---
+            h_mot = max(600, qtd_top*50)
+
+            fig_glob = px.bar(rank_cut, x="Total", y="Motivo", orientation='h', text="Label", title=f"Top {qtd_top} Motivos de Contato", height=h_mot)
             fig_glob.update_layout(yaxis={'categoryorder':'total ascending'})
             st.plotly_chart(fig_glob, use_container_width=True)
             
@@ -416,6 +423,9 @@ if 'df_final' in st.session_state:
                     csat_motivo = df_csat.groupby("Motivo de Contato")["CSAT Nota"].mean().reset_index()
                     csat_motivo = csat_motivo.sort_values("CSAT Nota", ascending=ascending_bool)
                     
+                    # --- AUMENTO DE TAMANHO ---
+                    h_csat = max(600, len(csat_motivo) * 50)
+
                     fig_csat = px.bar(
                         csat_motivo, 
                         x="CSAT Nota", 
@@ -425,7 +435,7 @@ if 'df_final' in st.session_state:
                         color="CSAT Nota", 
                         color_continuous_scale="RdYlGn", 
                         range_color=[1, 5],
-                        height=max(400, len(csat_motivo) * 35)
+                        height=h_csat
                     )
                     
                     fig_csat.update_layout(coloraxis_showscale=False)
@@ -462,7 +472,9 @@ if 'df_final' in st.session_state:
                 st.subheader("⚡ Velocidade por Agente")
                 tag = df_t.groupby("Atendente")[col_res].mean().reset_index().sort_values(col_res)
                 tag["Label"] = tag[col_res].apply(format_sla_string)
-                f_tag = px.bar(tag, x=col_res, y="Atendente", text="Label", orientation='h', title="Média de Tempo (Menor é melhor)")
+                
+                # --- AUMENTO DE TAMANHO ---
+                f_tag = px.bar(tag, x=col_res, y="Atendente", text="Label", orientation='h', title="Média de Tempo (Menor é melhor)", height=max(500, len(tag)*50))
                 f_tag.update_xaxes(showticklabels=False)
                 st.plotly_chart(f_tag, use_container_width=True)
                 
@@ -470,21 +482,17 @@ if 'df_final' in st.session_state:
                 
                 st.subheader("🐢 Motivos mais demorados (Média de Resolução)")
                 
-                # --- NOVO SLIDER PARA FILTRAR OS MAIS DEMORADOS ---
                 qtd_sla = st.slider("Qtd. Motivos:", 5, 50, 10, key="slider_sla")
                 
                 if "Motivo de Contato" in df.columns:
-                    # 1. Agrupa e calcula média
                     t_motivo = df_t.groupby("Motivo de Contato")[col_res].mean().reset_index()
-                    
-                    # 2. Ordena DECERSCENTE (Mais demorados primeiro) para pegar o TOP N
                     t_motivo = t_motivo.sort_values(col_res, ascending=False).head(qtd_sla)
-                    
-                    # 3. Ordena CRESCENTE para o Plotly desenhar corretamente (Maior em cima)
                     t_motivo = t_motivo.sort_values(col_res, ascending=True)
                     
                     t_motivo["Label"] = t_motivo[col_res].apply(format_sla_string)
-                    h_dyn = max(400, len(t_motivo) * 35)
+                    
+                    # --- AUMENTO DE TAMANHO ---
+                    h_dyn = max(600, len(t_motivo) * 50)
                     
                     fig_tm = px.bar(
                         t_motivo, 
