@@ -373,17 +373,50 @@ if 'df_final' in st.session_state:
                 k1.metric("Média Geral", f"{df_csat['CSAT Nota'].mean():.2f}/5.0")
                 k2.metric("Total Avaliações", len(df_csat))
                 
-                # NOVO: Filtro de Ordenação (DSat)
-                ordem_csat = st.radio("Ordenar Gráfico por:", ["Melhores Notas Primeiro (Ranking)", "Piores Notas Primeiro (Foco DSat)"], horizontal=True)
-                ascending_bool = True if "Piores" in ordem_csat else False
+                st.divider()
+                
+                # --- CONTROLES ---
+                # Aqui estava o problema. Ajustamos a lógica:
+                ordem_csat = st.radio(
+                    "Ordenar Gráfico por:", 
+                    ["Melhores Notas Primeiro (Ranking)", "Piores Notas Primeiro (Foco DSat)"], 
+                    horizontal=True
+                )
+                
+                # CORREÇÃO DA LÓGICA DE ORDENAÇÃO:
+                # Se quero "Piores" no topo, preciso ordenar DESC (5 -> 1), para o 1 ficar no final da lista e o Plotly desenhar no topo.
+                # Se quero "Melhores" no topo, preciso ordenar ASC (1 -> 5), para o 5 ficar no final da lista e o Plotly desenhar no topo.
+                eh_dsat = "Piores" in ordem_csat
+                ascending_bool = True if not eh_dsat else False 
                 
                 if "Motivo de Contato" in df.columns:
-                    csat_motivo = df_csat.groupby("Motivo de Contato")["CSAT Nota"].mean().reset_index().sort_values("CSAT Nota", ascending=ascending_bool)
+                    # Agrupa e calcula média
+                    csat_motivo = df_csat.groupby("Motivo de Contato")["CSAT Nota"].mean().reset_index()
                     
-                    color_scale = "RdYlGn" if not ascending_bool else "RdYlGn_r" # Inverte cor se for DSat
+                    # Ordena baseado na escolha
+                    csat_motivo = csat_motivo.sort_values("CSAT Nota", ascending=ascending_bool)
                     
-                    fig_csat = px.bar(csat_motivo, x="CSAT Nota", y="Motivo de Contato", orientation='h', text_auto='.2f', color="CSAT Nota", color_continuous_scale=color_scale, range_color=[1, 5])
-                    fig_csat.update_layout(coloraxis_showscale=False)
+                    # CORREÇÃO DA COR:
+                    # A cor não deve inverter. 1.0 é sempre Vermelho, 5.0 é sempre Verde.
+                    color_scale = "RdYlGn" 
+                    
+                    fig_csat = px.bar(
+                        csat_motivo, 
+                        x="CSAT Nota", 
+                        y="Motivo de Contato", 
+                        orientation='h', 
+                        text_auto='.2f', 
+                        color="CSAT Nota", 
+                        color_continuous_scale=color_scale, 
+                        range_color=[1, 5], # Garante que a escala vá de 1 a 5 fixo
+                        height=max(400, len(csat_motivo) * 35) # Altura dinâmica
+                    )
+                    
+                    fig_csat.update_layout(
+                        coloraxis_showscale=False,
+                        yaxis_title=None,
+                        xaxis_title="Nota Média"
+                    )
                     st.plotly_chart(fig_csat, use_container_width=True)
 
     with tab_tempo:
