@@ -8,7 +8,7 @@ from io import BytesIO
 
 # --- IMPORTAÇÃO DO UTILS ---
 try:
-    from utils import check_password
+    from utils import check_password, logout_button
 except ImportError:
     st.error("Arquivo utils.py não encontrado. Certifique-se de que ele está na mesma pasta.")
     st.stop()
@@ -259,6 +259,7 @@ with st.sidebar:
     periodo = st.date_input("Período", (data_hoje - timedelta(days=7), data_hoje), format="DD/MM/YYYY")
     team_input = st.text_input("IDs dos Times:", value="9156876")
     btn_run = st.button("🚀 Gerar Dados", type="primary")
+    logout_button()
 
 if btn_run:
     start, end = periodo
