@@ -17,7 +17,14 @@ except ImportError:
 st.set_page_config(page_title="Relatório de Atributos Intercom", page_icon="📊", layout="wide")
 
 # --- BLOQUEIO DE SENHA ---
-if not check_password():
+usuario = check_password()
+
+if not usuario: # Se não digitou senha
+    st.stop()
+
+if usuario == "analista": # Se for da equipe (analista), BLOQUEIA aqui
+    st.error("⛔ Acesso Negado: Área restrita à gestão.")
+    st.info("Utilize o menu lateral para acessar o **Painel do Analista**.")
     st.stop()
 
 WORKSPACE_ID = "xwvpdtlu"
