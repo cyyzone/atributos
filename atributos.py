@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from io import BytesIO
 
 # --- IMPORTAÇÃO DO UTILS ---
-try:
+#try:
     from utils import check_password, logout_button
 # except ImportError:
     # st.error("Arquivo utils.py não encontrado. Certifique-se de que ele está na mesma pasta.")
