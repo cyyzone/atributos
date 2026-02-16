@@ -245,23 +245,52 @@ if 'df_final' in st.session_state:
     # --- ABAS ---
     tab_graf, tab_equipe, tab_cross, tab_motivos, tab_csat, tab_tempo, tab_tabela = st.tabs(["📊 Distribuição", "👥 Equipe & Performance", "🔀 Cruzamentos", "🔗 Top Motivos", "⭐ CSAT / DSAT", "⏱️ SLA", "📋 Dados"])
 
-    with tab_graf:
+    with tab_grafico:
         c1, c2 = st.columns([2, 1])
-        with c1:
-            if cols_usuario:
-                graf_sel = st.selectbox("Atributo:", cols_usuario)
-                df_clean = df[df[graf_sel].notna()]
-                contagem = df_clean[graf_sel].value_counts().reset_index()
-                contagem.columns = ["Opção", "Qtd"]
-                total = contagem["Qtd"].sum()
-                contagem["Label"] = contagem["Qtd"].apply(lambda x: f"{x} ({(x/total*100):.1f}%)")
-                fig = px.bar(contagem, x="Qtd", y="Opção", text="Label", orientation='h', title=f"Distribuição: {graf_sel}")
+        
+        # --- PREPARAÇÃO DOS DADOS (FONTE ÚNICA) ---
+        if cols_usuario:
+            graf_sel = st.selectbox("Atributo:", cols_usuario, key="sel_graf_dist")
+            
+            # 1. Filtra vazios
+            df_clean = df[df[graf_sel].notna()]
+            
+            # 2. Conta e cria o DataFrame mestre
+            contagem = df_clean[graf_sel].value_counts().reset_index()
+            contagem.columns = ["Opção", "Qtd"] # Renomeia para ficar bonito
+            
+            # 3. Calcula Porcentagem para o Rótulo
+            total_registros = contagem["Qtd"].sum()
+            contagem["Label"] = contagem.apply(lambda x: f"{x['Qtd']} ({(x['Qtd']/total_registros*100):.1f}%)", axis=1)
+            
+            # 4. Ordenação Decrescente (Maior para o Menor) para a Tabela ficar certa
+            contagem = contagem.sort_values("Qtd", ascending=False).reset_index(drop=True)
+
+            with c1:
+                # O GRÁFICO (Lê do 'contagem')
+                fig = px.bar(
+                    contagem, 
+                    x="Qtd", 
+                    y="Opção", 
+                    text="Label", 
+                    orientation='h', 
+                    title=f"Distribuição: {graf_sel}",
+                    height=max(400, len(contagem) * 35) # Altura dinâmica
+                )
+                # 'categoryorder':'total ascending' faz o maior valor ficar no TOPO visualmente
                 fig.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig, use_container_width=True)
-        with c2:
-            if cols_usuario:
+                
+            with c2:
+                # A TABELA (Lê EXATAMENTE o mesmo 'contagem')
                 st.write("**Ranking:**")
-                st.dataframe(df[graf_sel].value_counts(), use_container_width=True)
+                st.dataframe(
+                    contagem[["Opção", "Qtd"]], # Mostra só o que importa
+                    use_container_width=True,
+                    hide_index=True
+                )
+        else:
+            st.warning("Selecione atributos no topo da página.")
 
     with tab_equipe:
         # 1. Gráfico de Volume
