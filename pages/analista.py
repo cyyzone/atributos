@@ -36,7 +36,6 @@ except:
 HEADERS = {"Authorization": f"Bearer {INTERCOM_ACCESS_TOKEN}", "Accept": "application/json"}
 
 # --- CONFIGURAÇÃO DE FILTROS FIXOS ---
-# Apenas estes times serão considerados na busca
 TIMES_PERMITIDOS_IDS = [2975006, 1972225]
 
 # --- FUNÇÕES ---
@@ -91,8 +90,6 @@ def fetch_my_conversations(start_date, end_date, admin_id):
         {"field": "created_at", "operator": "<", "value": ts_end},
         {"field": "admin_assignee_id", "operator": "=", "value": admin_id},
         {"field": "state", "operator": "=", "value": "closed"},
-        # --- AQUI ESTÁ O BLOQUEIO DE BACKOFFICE ---
-        # Garante que a conversa pertença EXCLUSIVAMENTE aos times permitidos
         {"field": "team_assignee_id", "operator": "IN", "value": TIMES_PERMITIDOS_IDS}
     ]
     
@@ -131,7 +128,7 @@ def fetch_my_conversations(start_date, end_date, admin_id):
 st.title("🎯 Painel do Analista: Minha Performance")
 st.markdown("Acompanhe sua meta de classificação (Apenas conversas **fechadas** dos times de **Suporte**).")
 
-# Carrega dados
+# Carrega dados básicos (Cacheado)
 dados_admins = get_admin_list()
 
 if dados_admins:
@@ -147,6 +144,7 @@ if dados_admins:
         st.error(f"Nenhum analista encontrado nos times {TIMES_PERMITIDOS_IDS}.")
         st.stop()
 
+    # --- INPUTS ---
     col_analista, col_periodo, col_btn = st.columns([2, 2, 1])
     
     with col_analista:
@@ -161,99 +159,112 @@ if dados_admins:
         st.write("") 
         btn_atualizar = st.button("🔄 Atualizar", type="primary")
 
-    if usuario_selecionado:
-        admin_id_alvo = dados_admins[usuario_selecionado]['id']
-        start, end = periodo
-        
-        with st.spinner("Analisando métricas..."):
-            raw = fetch_my_conversations(start, end, admin_id_alvo)
-            mapa_attrs = get_attribute_definitions()
-        
-        if raw:
-            rows = []
-            for c in raw:
-                attrs = c.get('custom_attributes', {})
+    # --- LÓGICA DE BUSCA (SÓ RODA SE APERTAR O BOTÃO) ---
+    if btn_atualizar:
+        if usuario_selecionado:
+            admin_id_alvo = dados_admins[usuario_selecionado]['id']
+            start, end = periodo
+            
+            with st.spinner("Analisando métricas..."):
+                raw = fetch_my_conversations(start, end, admin_id_alvo)
+                mapa_attrs = get_attribute_definitions()
+            
+            if raw:
+                rows = []
+                for c in raw:
+                    attrs = c.get('custom_attributes', {})
+                    
+                    motivo = None
+                    for k, v in attrs.items():
+                        label = mapa_attrs.get(k, k)
+                        if label == "Motivo de Contato":
+                            motivo = v
+                            break
+                    
+                    link = f"https://app.intercom.com/a/inbox/{WORKSPACE_ID}/inbox/conversation/{c['id']}"
+                    
+                    rows.append({
+                        "ID": c['id'],
+                        "Data": datetime.fromtimestamp(c['created_at']).strftime("%d/%m/%Y %H:%M"),
+                        "Motivo": motivo,
+                        "Link": link,
+                        "Status": "✅ Classificado" if motivo else "🚨 Pendente"
+                    })
                 
-                motivo = None
-                for k, v in attrs.items():
-                    label = mapa_attrs.get(k, k)
-                    if label == "Motivo de Contato":
-                        motivo = v
-                        break
-                
-                link = f"https://app.intercom.com/a/inbox/{WORKSPACE_ID}/inbox/conversation/{c['id']}"
-                
-                rows.append({
-                    "ID": c['id'],
-                    "Data": datetime.fromtimestamp(c['created_at']).strftime("%d/%m/%Y %H:%M"),
-                    "Motivo": motivo,
-                    "Link": link,
-                    "Status": "✅ Classificado" if motivo else "🚨 Pendente"
-                })
-            
-            df = pd.DataFrame(rows)
-            
-            total = len(df)
-            classificados = len(df[df["Motivo"].notna()])
-            pendentes = total - classificados
-            taxa = (classificados / total * 100) if total > 0 else 0
-            
-            st.divider()
-            
-            k1, k2, k3 = st.columns(3)
-            
-            k1.metric("Conversas de Suporte", total)
-            
-            k2.metric(
-                "Pendentes de Classificação", 
-                pendentes, 
-                delta="-Zerado!" if pendentes == 0 else f"{pendentes} para fazer",
-                delta_color="inverse"
-            )
-            
-            cor_meta = "normal" if taxa >= 90 else "inverse"
-            k3.metric(
-                "Minha Taxa", 
-                f"{taxa:.1f}%", 
-                delta="Meta: 90%",
-                delta_color=cor_meta 
-            )
-
-            st.write("Progresso da Meta:")
-            cor_barra = "#28a745" if taxa >= 90 else "#dc3545"
-            st.markdown(f"""<style>.stProgress > div > div > div > div {{ background-color: {cor_barra}; }}</style>""", unsafe_allow_html=True)
-            st.progress(min(taxa / 100, 1.0))
-            
-            if taxa < 90:
-                st.warning(f"⚠️ Atenção, {usuario_selecionado}! Faltam **{int((0.9 * total) - classificados) + 1}** conversas.")
+                # Salva no Session State para não sumir ao trocar de aba
+                st.session_state['df_analista_resultado'] = pd.DataFrame(rows)
+                st.session_state['analista_nome_atual'] = usuario_selecionado
+                st.success("Dados atualizados!")
             else:
-                st.success(f"🎉 Parabéns! Meta batida!")
+                st.session_state['df_analista_resultado'] = pd.DataFrame() # DataFrame Vazio
+                st.session_state['analista_nome_atual'] = usuario_selecionado
+                st.warning("Nenhuma conversa encontrada neste período para os times selecionados.")
 
-            st.divider()
+    # --- EXIBIÇÃO DOS RESULTADOS (LÊ DA MEMÓRIA) ---
+    if 'df_analista_resultado' in st.session_state and not st.session_state['df_analista_resultado'].empty:
+        
+        df = st.session_state['df_analista_resultado']
+        nome_atual = st.session_state.get('analista_nome_atual', 'Analista')
 
-            tab_pendentes, tab_todos = st.tabs(["🚨 Pendências", "📋 Histórico"])
-            
-            with tab_pendentes:
-                df_pendentes = df[df["Status"] == "🚨 Pendente"]
-                if not df_pendentes.empty:
-                    st.write(f"Você tem **{len(df_pendentes)} conversas fechadas** sem motivo classificado.")
-                    st.dataframe(
-                        df_pendentes[["Data", "ID", "Link"]],
-                        use_container_width=True,
-                        column_config={"Link": st.column_config.LinkColumn("Link", display_text="🔗 Abrir")},
-                        hide_index=True
-                    )
-                else:
-                    st.balloons()
-                    st.success("Tudo limpo! 🚀")
+        # Só exibe se o DataFrame tiver dados
+        total = len(df)
+        classificados = len(df[df["Motivo"].notna()])
+        pendentes = total - classificados
+        taxa = (classificados / total * 100) if total > 0 else 0
+        
+        st.divider()
+        
+        k1, k2, k3 = st.columns(3)
+        
+        k1.metric("Conversas de Suporte", total)
+        
+        k2.metric(
+            "Pendentes de Classificação", 
+            pendentes, 
+            delta="-Zerado!" if pendentes == 0 else f"{pendentes} para fazer",
+            delta_color="inverse"
+        )
+        
+        cor_meta = "normal" if taxa >= 90 else "inverse"
+        k3.metric(
+            "Minha Taxa", 
+            f"{taxa:.1f}%", 
+            delta="Meta: 90%",
+            delta_color=cor_meta 
+        )
 
-            with tab_todos:
+        st.write("Progresso da Meta:")
+        cor_barra = "#28a745" if taxa >= 90 else "#dc3545"
+        st.markdown(f"""<style>.stProgress > div > div > div > div {{ background-color: {cor_barra}; }}</style>""", unsafe_allow_html=True)
+        st.progress(min(taxa / 100, 1.0))
+        
+        if taxa < 90:
+            st.warning(f"⚠️ Atenção, {nome_atual}! Faltam **{int((0.9 * total) - classificados) + 1}** conversas.")
+        else:
+            st.success(f"🎉 Parabéns! Meta batida!")
+
+        st.divider()
+
+        tab_pendentes, tab_todos = st.tabs(["🚨 Pendências", "📋 Histórico"])
+        
+        with tab_pendentes:
+            df_pendentes = df[df["Status"] == "🚨 Pendente"]
+            if not df_pendentes.empty:
+                st.write(f"Você tem **{len(df_pendentes)} conversas fechadas** sem motivo classificado.")
                 st.dataframe(
-                    df[["Data", "ID", "Motivo", "Status", "Link"]],
+                    df_pendentes[["Data", "ID", "Link"]],
                     use_container_width=True,
-                    column_config={"Link": st.column_config.LinkColumn("Link", display_text="Abrir")},
+                    column_config={"Link": st.column_config.LinkColumn("Link", display_text="🔗 Abrir")},
                     hide_index=True
                 )
+            else:
+                st.balloons()
+                st.success("Tudo limpo! 🚀")
 
-        else:
-            st.info("Nenhuma conversa encontrada neste período para os times selecionados.")
+        with tab_todos:
+            st.dataframe(
+                df[["Data", "ID", "Motivo", "Status", "Link"]],
+                use_container_width=True,
+                column_config={"Link": st.column_config.LinkColumn("Link", display_text="Abrir")},
+                hide_index=True
+            )
