@@ -360,37 +360,15 @@ if 'df_final' in st.session_state:
                 
                 st.divider()
                 
-                # --- CORREÇÃO DO "PULO" ---
-                # Troquei st.radio por st.selectbox. É mais estável.
-                ordem_csat = st.selectbox(
-                    "Ordenar Gráfico por:", 
-                    ["Melhores Notas Primeiro (Ranking)", "Piores Notas Primeiro (Foco DSat)"], 
-                    key="sel_ordem_csat_v2" # Key nova para evitar conflitos
-                )
-                
-                eh_dsat = "Piores" in ordem_csat
-                ascending_bool = False if eh_dsat else True
-                
                 if "Motivo de Contato" in df.columns:
+                    # Order Ascending = Menor para Maior (Foco DSat/Notas Baixas)
                     csat_motivo = df_csat.groupby("Motivo de Contato")["CSAT Nota"].mean().reset_index()
-                    csat_motivo = csat_motivo.sort_values("CSAT Nota", ascending=ascending_bool)
+                    csat_motivo = csat_motivo.sort_values("CSAT Nota", ascending=False) # Plotly inverte no Horizontal, então False põe os menores no topo
                     h_csat = max(600, len(csat_motivo) * 50)
 
                     fig_csat = px.bar(csat_motivo, x="CSAT Nota", y="Motivo de Contato", orientation='h', text_auto='.2f', color="CSAT Nota", color_continuous_scale="RdYlGn", range_color=[1, 5], height=h_csat)
                     fig_csat.update_layout(coloraxis_showscale=False)
                     st.plotly_chart(fig_csat, use_container_width=True)
-                    
-                    st.divider()
-                    
-                    st.subheader("Volume de Avaliações por Nota e Motivo")
-                    df_csat["Nota Label"] = df_csat["CSAT Nota"].astype(int).astype(str)
-                    csat_grouped = df_csat.groupby(["Motivo de Contato", "Nota Label"]).size().reset_index(name='Qtd')
-                    csat_grouped['Total_Motivo'] = csat_grouped.groupby("Motivo de Contato")['Qtd'].transform('sum')
-                    csat_grouped['Label_Pct'] = csat_grouped.apply(lambda x: f"{x['Qtd']} ({(x['Qtd']/x['Total_Motivo']*100):.0f}%)", axis=1)
-
-                    fig_csat_vol = px.bar(csat_grouped, x="Qtd", y="Motivo de Contato", color="Nota Label", text="Label_Pct", orientation='h', category_orders={"Nota Label": ["1", "2", "3", "4", "5"]}, color_discrete_map={"1": "#FF4B4B", "2": "#FF8C00", "3": "#FFD700", "4": "#9ACD32", "5": "#008000"})
-                    fig_csat_vol.update_layout(yaxis={'categoryorder':'total ascending'})
-                    st.plotly_chart(fig_csat_vol, use_container_width=True)
 
     with tab_tempo:
         st.header("Análise de Tempo")
@@ -423,27 +401,21 @@ if 'df_final' in st.session_state:
             else: st.warning("Sem dados de tempo.")
 
     with tab_tabela:
-        # --- NOVO: FILTROS + BOTÃO DE EXPORTAR NA MESMA LINHA ---
         c_filter, c_export = st.columns([3, 1])
         
         with c_filter:
-            # 1. Filtro de Analista (NOVIDADE)
             agentes_unicos = sorted(df["Atendente"].astype(str).unique())
             sel_agentes = st.multiselect("Filtrar por Analista:", agentes_unicos, key="sel_agente_final")
 
         with c_export:
-            # Botão de Exportar alinhado
             st.write("") 
             excel = gerar_excel_multias(df, cols_usuario)
             st.download_button("📥 Baixar Excel", data=excel, file_name="relatorio_gerencial.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
 
-        # Aplica o filtro na visualização
         df_view = df.copy()
         if sel_agentes:
             df_view = df_view[df_view["Atendente"].isin(sel_agentes)]
         
-        # 2. Link Clicável (NOVIDADE)
-        # Define as colunas que vão aparecer
         cols_display = ["Data", "Atendente", "Link", "Tempo Resolução"] + cols_usuario
         cols_existentes = [c for c in cols_display if c in df_view.columns]
         
@@ -452,9 +424,6 @@ if 'df_final' in st.session_state:
             use_container_width=True, 
             hide_index=True,
             column_config={
-                "Link": st.column_config.LinkColumn(
-                    "Link", 
-                    display_text="🔗 Abrir Conversa" # Texto bonito em vez da URL feia
-                )
+                "Link": st.column_config.LinkColumn("Link", display_text="🔗 Abrir Conversa")
             }
         )
