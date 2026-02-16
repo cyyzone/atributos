@@ -246,7 +246,6 @@ if 'df_final' in st.session_state:
     tab_graf, tab_equipe, tab_cross, tab_motivos, tab_csat, tab_tempo, tab_tabela = st.tabs(["📊 Distribuição", "👥 Equipe & Performance", "🔀 Cruzamentos", "🔗 Top Motivos", "⭐ CSAT / DSAT", "⏱️ SLA", "📋 Dados"])
 
     with tab_graf:
-        # --- FILTROS NO TOPO ---
         c_filt1, c_filt2 = st.columns([3, 1])
         with c_filt1:
             graf_sel = st.selectbox("Selecione o Atributo:", cols_usuario, key="sel_graf_dist")
@@ -259,28 +258,15 @@ if 'df_final' in st.session_state:
             df_clean = df[df[graf_sel].notna()]
             contagem = df_clean[graf_sel].value_counts().reset_index()
             contagem.columns = ["Opção", "Qtd"]
-            
-            # Top N
             contagem = contagem.head(qtd_dist) 
             
             total_registros = contagem["Qtd"].sum()
             contagem["Label"] = contagem.apply(lambda x: f"{x['Qtd']} ({(x['Qtd']/total_registros*100):.1f}%)", axis=1)
-            
             contagem = contagem.sort_values("Qtd", ascending=False).reset_index(drop=True)
 
             with c1:
-                # --- AUMENTO DE TAMANHO ---
-                altura_graf = max(600, len(contagem) * 50) # Mínimo 600px, 50px por item
-                
-                fig = px.bar(
-                    contagem, 
-                    x="Qtd", 
-                    y="Opção", 
-                    text="Label", 
-                    orientation='h', 
-                    title=f"Distribuição: {graf_sel} (Top {qtd_dist})",
-                    height=altura_graf
-                )
+                altura_graf = max(600, len(contagem) * 50) 
+                fig = px.bar(contagem, x="Qtd", y="Opção", text="Label", orientation='h', title=f"Distribuição: {graf_sel} (Top {qtd_dist})", height=altura_graf)
                 fig.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig, use_container_width=True)
                 
@@ -294,8 +280,6 @@ if 'df_final' in st.session_state:
         st.subheader("Volume de Conversas")
         vol = df['Atendente'].value_counts().reset_index()
         vol.columns = ['Agente', 'Volume']
-        
-        # --- AUMENTO DE TAMANHO ---
         st.plotly_chart(px.bar(vol, x='Agente', y='Volume', text='Volume', height=500), use_container_width=True)
         
         st.divider()
@@ -304,27 +288,11 @@ if 'df_final' in st.session_state:
         st.info("💡 **Como ler:** Analistas no canto **inferior direito** atendem muito e rápido. No **superior esquerdo**, atendem pouco e demoram (atenção).")
         
         if "Tempo Resolução (seg)" in df.columns:
-            df_perf = df.groupby("Atendente").agg(
-                Volume=('ID', 'count'),
-                Tempo_Medio_Seg=('Tempo Resolução (seg)', 'mean')
-            ).reset_index()
-            
+            df_perf = df.groupby("Atendente").agg(Volume=('ID', 'count'), Tempo_Medio_Seg=('Tempo Resolução (seg)', 'mean')).reset_index()
             df_perf = df_perf[df_perf['Tempo_Medio_Seg'] > 0]
             df_perf['Tempo Médio'] = df_perf['Tempo_Medio_Seg'].apply(format_sla_string)
             
-            # --- AUMENTO DE TAMANHO ---
-            fig_scatter = px.scatter(
-                df_perf, 
-                x="Volume", 
-                y="Tempo_Medio_Seg", 
-                text="Atendente",
-                size="Volume",
-                color="Tempo_Medio_Seg",
-                color_continuous_scale="RdYlGn_r", 
-                hover_data=["Tempo Médio"],
-                title="Relação: Quem atende mais vs Quem demora mais",
-                height=700 # Altura fixa grande
-            )
+            fig_scatter = px.scatter(df_perf, x="Volume", y="Tempo_Medio_Seg", text="Atendente", size="Volume", color="Tempo_Medio_Seg", color_continuous_scale="RdYlGn_r", hover_data=["Tempo Médio"], title="Relação: Quem atende mais vs Quem demora mais", height=700)
             media_vol = df_perf["Volume"].mean()
             media_tempo = df_perf["Tempo_Medio_Seg"].mean()
             fig_scatter.add_vline(x=media_vol, line_dash="dash", line_color="gray", annotation_text="Média Vol.")
@@ -339,24 +307,11 @@ if 'df_final' in st.session_state:
         def plot_stack(df_in, x_col, color_col, title, limit=10):
             top_n = df_in[x_col].value_counts().head(limit).index.tolist()
             df_filtered = df_in[df_in[x_col].isin(top_n)]
-
             g = df_filtered.groupby([x_col, color_col]).size().reset_index(name='Qtd')
             g['Total'] = g.groupby(x_col)['Qtd'].transform('sum')
             g['Pct'] = g.apply(lambda x: f"{(x['Qtd']/x['Total']*100):.0f}%", axis=1)
-
-            # --- AUMENTO DE TAMANHO ---
-            h_dyn = max(600, len(top_n) * 50) # Mínimo 600px, 50px por item
-            
-            f = px.bar(
-                g, 
-                y=x_col, 
-                x='Qtd', 
-                color=color_col, 
-                text='Pct', 
-                orientation='h', 
-                title=title,
-                height=h_dyn
-            )
+            h_dyn = max(600, len(top_n) * 50) 
+            f = px.bar(g, y=x_col, x='Qtd', color=color_col, text='Pct', orientation='h', title=title, height=h_dyn)
             f.update_layout(yaxis={'categoryorder':'total ascending'})
             return f
 
@@ -377,15 +332,11 @@ if 'df_final' in st.session_state:
         col_m1, col_m2 = "Motivo de Contato", "Motivo 2 (Se houver)"
         if col_m1 in df.columns and col_m2 in df.columns:
             qtd_top = st.slider("Quantidade de Motivos no Ranking:", 5, 50, 10)
-            
             rank = pd.concat([df[col_m1], df[col_m2]]).value_counts().reset_index()
             rank.columns = ["Motivo", "Total"]
             rank_cut = rank.head(qtd_top)
-            
             total_abs = rank["Total"].sum()
             rank_cut["Label"] = rank_cut["Total"].apply(lambda x: f"{x} ({(x/total_abs*100):.1f}%)")
-            
-            # --- AUMENTO DE TAMANHO ---
             h_mot = max(600, qtd_top*50)
 
             fig_glob = px.bar(rank_cut, x="Total", y="Motivo", orientation='h', text="Label", title=f"Top {qtd_top} Motivos de Contato", height=h_mot)
@@ -409,12 +360,7 @@ if 'df_final' in st.session_state:
                 
                 st.divider()
                 
-                ordem_csat = st.radio(
-                    "Ordenar Gráfico por:", 
-                    ["Melhores Notas Primeiro (Ranking)", "Piores Notas Primeiro (Foco DSat)"], 
-                    horizontal=True,
-                    key="radio_ordem_csat" 
-                )
+                ordem_csat = st.radio("Ordenar Gráfico por:", ["Melhores Notas Primeiro (Ranking)", "Piores Notas Primeiro (Foco DSat)"], horizontal=True, key="radio_ordem_csat")
                 
                 eh_dsat = "Piores" in ordem_csat
                 ascending_bool = False if eh_dsat else True
@@ -422,22 +368,9 @@ if 'df_final' in st.session_state:
                 if "Motivo de Contato" in df.columns:
                     csat_motivo = df_csat.groupby("Motivo de Contato")["CSAT Nota"].mean().reset_index()
                     csat_motivo = csat_motivo.sort_values("CSAT Nota", ascending=ascending_bool)
-                    
-                    # --- AUMENTO DE TAMANHO ---
                     h_csat = max(600, len(csat_motivo) * 50)
 
-                    fig_csat = px.bar(
-                        csat_motivo, 
-                        x="CSAT Nota", 
-                        y="Motivo de Contato", 
-                        orientation='h', 
-                        text_auto='.2f', 
-                        color="CSAT Nota", 
-                        color_continuous_scale="RdYlGn", 
-                        range_color=[1, 5],
-                        height=h_csat
-                    )
-                    
+                    fig_csat = px.bar(csat_motivo, x="CSAT Nota", y="Motivo de Contato", orientation='h', text_auto='.2f', color="CSAT Nota", color_continuous_scale="RdYlGn", range_color=[1, 5], height=h_csat)
                     fig_csat.update_layout(coloraxis_showscale=False)
                     st.plotly_chart(fig_csat, use_container_width=True)
                     
@@ -445,21 +378,11 @@ if 'df_final' in st.session_state:
                     
                     st.subheader("Volume de Avaliações por Nota e Motivo")
                     df_csat["Nota Label"] = df_csat["CSAT Nota"].astype(int).astype(str)
-                    
                     csat_grouped = df_csat.groupby(["Motivo de Contato", "Nota Label"]).size().reset_index(name='Qtd')
                     csat_grouped['Total_Motivo'] = csat_grouped.groupby("Motivo de Contato")['Qtd'].transform('sum')
                     csat_grouped['Label_Pct'] = csat_grouped.apply(lambda x: f"{x['Qtd']} ({(x['Qtd']/x['Total_Motivo']*100):.0f}%)", axis=1)
 
-                    fig_csat_vol = px.bar(
-                        csat_grouped, 
-                        x="Qtd", 
-                        y="Motivo de Contato", 
-                        color="Nota Label", 
-                        text="Label_Pct",
-                        orientation='h',
-                        category_orders={"Nota Label": ["1", "2", "3", "4", "5"]},
-                        color_discrete_map={"1": "#FF4B4B", "2": "#FF8C00", "3": "#FFD700", "4": "#9ACD32", "5": "#008000"}
-                    )
+                    fig_csat_vol = px.bar(csat_grouped, x="Qtd", y="Motivo de Contato", color="Nota Label", text="Label_Pct", orientation='h', category_orders={"Nota Label": ["1", "2", "3", "4", "5"]}, color_discrete_map={"1": "#FF4B4B", "2": "#FF8C00", "3": "#FFD700", "4": "#9ACD32", "5": "#008000"})
                     fig_csat_vol.update_layout(yaxis={'categoryorder':'total ascending'})
                     st.plotly_chart(fig_csat_vol, use_container_width=True)
 
@@ -472,8 +395,6 @@ if 'df_final' in st.session_state:
                 st.subheader("⚡ Velocidade por Agente")
                 tag = df_t.groupby("Atendente")[col_res].mean().reset_index().sort_values(col_res)
                 tag["Label"] = tag[col_res].apply(format_sla_string)
-                
-                # --- AUMENTO DE TAMANHO ---
                 f_tag = px.bar(tag, x=col_res, y="Atendente", text="Label", orientation='h', title="Média de Tempo (Menor é melhor)", height=max(500, len(tag)*50))
                 f_tag.update_xaxes(showticklabels=False)
                 st.plotly_chart(f_tag, use_container_width=True)
@@ -481,33 +402,48 @@ if 'df_final' in st.session_state:
                 st.divider()
                 
                 st.subheader("🐢 Motivos mais demorados (Média de Resolução)")
-                
                 qtd_sla = st.slider("Qtd. Motivos:", 5, 50, 10, key="slider_sla")
                 
                 if "Motivo de Contato" in df.columns:
                     t_motivo = df_t.groupby("Motivo de Contato")[col_res].mean().reset_index()
                     t_motivo = t_motivo.sort_values(col_res, ascending=False).head(qtd_sla)
                     t_motivo = t_motivo.sort_values(col_res, ascending=True)
-                    
                     t_motivo["Label"] = t_motivo[col_res].apply(format_sla_string)
-                    
-                    # --- AUMENTO DE TAMANHO ---
                     h_dyn = max(600, len(t_motivo) * 50)
                     
-                    fig_tm = px.bar(
-                        t_motivo, 
-                        x=col_res, 
-                        y="Motivo de Contato", 
-                        text="Label", 
-                        orientation='h', 
-                        height=h_dyn, 
-                        title=f"Top {qtd_sla} Motivos mais demorados"
-                    )
+                    fig_tm = px.bar(t_motivo, x=col_res, y="Motivo de Contato", text="Label", orientation='h', height=h_dyn, title=f"Top {qtd_sla} Motivos mais demorados")
                     fig_tm.update_xaxes(showticklabels=False)
                     st.plotly_chart(fig_tm, use_container_width=True)
             else: st.warning("Sem dados de tempo.")
 
     with tab_tabela:
-        excel = gerar_excel_multias(df, cols_usuario)
-        st.download_button("📥 Baixar Excel Completo", data=excel, file_name="relatorio_gerencial.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
-        st.dataframe(df[["Data", "Atendente", "Tempo Resolução"] + cols_usuario], use_container_width=True)
+        # --- LAYOUT DE FILTROS ---
+        c_filter, c_export = st.columns([3, 1])
+        
+        with c_filter:
+            # Filtro de Analista
+            agentes_unicos = sorted(df["Atendente"].astype(str).unique())
+            sel_agentes = st.multiselect("Filtrar por Analista:", agentes_unicos)
+
+        with c_export:
+            # Botão de Exportar
+            st.write("") # Espaço para alinhar verticalmente com o input
+            excel = gerar_excel_multias(df, cols_usuario)
+            st.download_button("📥 Baixar Excel", data=excel, file_name="relatorio_gerencial.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
+
+        # Aplica o filtro
+        df_view = df.copy()
+        if sel_agentes:
+            df_view = df_view[df_view["Atendente"].isin(sel_agentes)]
+        
+        # Define colunas (Incluindo Link)
+        cols_display = ["Data", "Atendente", "Link", "Tempo Resolução"] + cols_usuario
+        
+        st.dataframe(
+            df_view[cols_display], 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                "Link": st.column_config.LinkColumn("Link", display_text="🔗 Abrir Conversa")
+            }
+        )
