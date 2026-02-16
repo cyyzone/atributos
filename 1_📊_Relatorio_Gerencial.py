@@ -243,7 +243,6 @@ if 'df_final' in st.session_state:
     st.divider()
 
     # --- ABAS ---
-    # Aqui estava o problema do nome: tab_graf vs tab_grafico. Agora está tudo padronizado.
     tab_graf, tab_equipe, tab_cross, tab_motivos, tab_csat, tab_tempo, tab_tabela = st.tabs(["📊 Distribuição", "👥 Equipe & Performance", "🔀 Cruzamentos", "🔗 Top Motivos", "⭐ CSAT / DSAT", "⏱️ SLA", "📋 Dados"])
 
     with tab_graf:
@@ -252,7 +251,6 @@ if 'df_final' in st.session_state:
         if cols_usuario:
             graf_sel = st.selectbox("Atributo:", cols_usuario, key="sel_graf_dist")
             
-            # Fonte única
             df_clean = df[df[graf_sel].notna()]
             contagem = df_clean[graf_sel].value_counts().reset_index()
             contagem.columns = ["Opção", "Qtd"]
@@ -260,7 +258,6 @@ if 'df_final' in st.session_state:
             total_registros = contagem["Qtd"].sum()
             contagem["Label"] = contagem.apply(lambda x: f"{x['Qtd']} ({(x['Qtd']/total_registros*100):.1f}%)", axis=1)
             
-            # Ordena DESC (Maior -> Menor)
             contagem = contagem.sort_values("Qtd", ascending=False).reset_index(drop=True)
 
             with c1:
@@ -283,7 +280,6 @@ if 'df_final' in st.session_state:
             st.warning("Selecione atributos no topo da página.")
 
     with tab_equipe:
-        # 1. Gráfico de Volume
         st.subheader("Volume de Conversas")
         vol = df['Atendente'].value_counts().reset_index()
         vol.columns = ['Agente', 'Volume']
@@ -291,7 +287,6 @@ if 'df_final' in st.session_state:
         
         st.divider()
         
-        # 2. Matriz de Eficiência
         st.subheader("🚀 Matriz de Eficiência: Volume x Tempo")
         st.info("💡 **Como ler:** Analistas no canto **inferior direito** atendem muito e rápido. No **superior esquerdo**, atendem pouco e demoram (atenção).")
         
@@ -324,31 +319,49 @@ if 'df_final' in st.session_state:
             st.warning("Dados de tempo não disponíveis.")
 
     with tab_cross:
-        def plot_stack(df_in, x_col, color_col, title):
-            g = df_in.groupby([x_col, color_col]).size().reset_index(name='Qtd')
+        # --- FILTRO NOVO ---
+        qtd_cross = st.slider("Quantidade de itens no Ranking:", 5, 50, 10, key="slider_cross")
+
+        def plot_stack(df_in, x_col, color_col, title, limit=10):
+            # 1. Filtra Top N
+            top_n = df_in[x_col].value_counts().head(limit).index.tolist()
+            df_filtered = df_in[df_in[x_col].isin(top_n)]
+
+            # 2. Agrupa
+            g = df_filtered.groupby([x_col, color_col]).size().reset_index(name='Qtd')
+            
+            # 3. Calcula %
             g['Total'] = g.groupby(x_col)['Qtd'].transform('sum')
             g['Pct'] = g.apply(lambda x: f"{(x['Qtd']/x['Total']*100):.0f}%", axis=1)
-            # AQUI ESTÁ A MUDANÇA: Gráfico Vertical (bar em vez de barh)
-            # x=x_col (Categoria no eixo X)
-            # y='Qtd' (Altura da barra)
-            f = px.bar(g, x=x_col, y='Qtd', color=color_col, text='Pct', title=title)
+
+            # 4. Plota HORIZONTAL (Y=Categorias, X=Qtd)
+            h_dyn = max(400, len(top_n) * 35)
+            
+            f = px.bar(
+                g, 
+                y=x_col, 
+                x='Qtd', 
+                color=color_col, 
+                text='Pct', 
+                orientation='h', 
+                title=title,
+                height=h_dyn
+            )
+            f.update_layout(yaxis={'categoryorder':'total ascending'})
             return f
 
-        st.subheader("1. Status por Motivo")
         if "Motivo de Contato" in df.columns and "Status do atendimento" in df.columns:
-            st.plotly_chart(plot_stack(df.dropna(subset=["Motivo de Contato", "Status do atendimento"]), "Motivo de Contato", "Status do atendimento", ""), use_container_width=True)
+            st.plotly_chart(plot_stack(df.dropna(subset=["Motivo de Contato", "Status do atendimento"]), "Motivo de Contato", "Status do atendimento", "1. Status por Motivo", qtd_cross), use_container_width=True)
         
         st.divider()
 
-        st.subheader("2. Tipo por Motivo")
         if "Motivo de Contato" in df.columns and "Tipo de Atendimento" in df.columns:
-            st.plotly_chart(plot_stack(df.dropna(subset=["Motivo de Contato", "Tipo de Atendimento"]), "Motivo de Contato", "Tipo de Atendimento", ""), use_container_width=True)
+            st.plotly_chart(plot_stack(df.dropna(subset=["Motivo de Contato", "Tipo de Atendimento"]), "Motivo de Contato", "Tipo de Atendimento", "2. Tipo por Motivo", qtd_cross), use_container_width=True)
         
         st.divider()
         
-        st.subheader("3. Eficiência por Canal (Tipo x Status)")
         if "Tipo de Atendimento" in df.columns and "Status do atendimento" in df.columns:
-            st.plotly_chart(plot_stack(df.dropna(subset=["Tipo de Atendimento", "Status do atendimento"]), "Tipo de Atendimento", "Status do atendimento", ""), use_container_width=True)
+            st.plotly_chart(plot_stack(df.dropna(subset=["Tipo de Atendimento", "Status do atendimento"]), "Tipo de Atendimento", "Status do atendimento", "3. Status por Canal", qtd_cross), use_container_width=True)
 
     with tab_motivos:
         col_m1, col_m2 = "Motivo de Contato", "Motivo 2 (Se houver)"
@@ -391,17 +404,7 @@ if 'df_final' in st.session_state:
                 )
                 
                 eh_dsat = "Piores" in ordem_csat
-                
-                # CORREÇÃO DEFINITIVA DA ORDENAÇÃO
-                if eh_dsat:
-                    # Se quer Piores (1.0) no Topo -> Ordena Ascending (1..5) -> Plotly inverte e põe 1 no topo (se categoryorder nao interferir)
-                    # Teste prático: No Plotly H, a ordem padrão é de baixo pra cima.
-                    # Se mandarmos [5, 4, 3, 2, 1], o 1 fica no topo. (Descending)
-                    ascending_bool = False 
-                else:
-                    # Se quer Melhores (5.0) no Topo
-                    # Se mandarmos [1, 2, 3, 4, 5], o 5 fica no topo. (Ascending)
-                    ascending_bool = True
+                ascending_bool = False if eh_dsat else True
                 
                 if "Motivo de Contato" in df.columns:
                     csat_motivo = df_csat.groupby("Motivo de Contato")["CSAT Nota"].mean().reset_index()
