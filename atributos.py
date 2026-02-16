@@ -9,9 +9,9 @@ from io import BytesIO
 # --- IMPORTAÇÃO DO UTILS ---
 try:
     from utils import check_password, logout_button
-except ImportError:
-    st.error("Arquivo utils.py não encontrado. Certifique-se de que ele está na mesma pasta.")
-    st.stop()
+# except ImportError:
+    # st.error("Arquivo utils.py não encontrado. Certifique-se de que ele está na mesma pasta.")
+   #  st.stop()
 
 # --- CONFIGURAÇÕES ---
 st.set_page_config(page_title="Relatório de Atributos Intercom", page_icon="📊", layout="wide")
