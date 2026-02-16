@@ -326,7 +326,7 @@ if 'df_final' in st.session_state:
         st.divider()
         
         if "Tipo de Atendimento" in df.columns and "Status do atendimento" in df.columns:
-            st.plotly_chart(plot_stack(df.dropna(subset=["Tipo de Atendimento", "Status do atendimento"]), "Tipo de Atendimento", "Status do atendimento", "3. Status por Canal", qtd_cross), use_container_width=True)
+            st.plotly_chart(plot_stack(df.dropna(subset=["Tipo de Atendimento", "Status do atendimento"]), "Tipo de Atendimento", "Status do atendimento", "3. Status por Tipo de atendimento", qtd_cross), use_container_width=True)
 
     with tab_motivos:
         col_m1, col_m2 = "Motivo de Contato", "Motivo 2 (Se houver)"
