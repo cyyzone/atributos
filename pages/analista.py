@@ -4,10 +4,11 @@ import requests
 import time
 import plotly.express as px
 from datetime import datetime, timedelta
-
-# --- IMPORTAÇÃO DO UTILS (Pega da pasta pai) ---
 import sys
 import os
+
+# --- IMPORTAÇÃO DO UTILS (Correção de Pasta) ---
+# Isso permite importar o utils.py que está na pasta de cima
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 try:
@@ -19,21 +20,30 @@ except ImportError:
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Minhas Metas", page_icon="🎯", layout="wide")
 
-# --- LOGIN ---
-if not check_password():
+# --- LOGIN (ATUALIZADO PARA O NOVO SISTEMA) ---
+# Verifica quem está entrando
+nivel_acesso = check_password()
+
+# Se não estiver logado, para tudo.
+if not nivel_acesso:
     st.stop()
+
+# Nota: Não precisamos bloquear o "analista" aqui, pois essa página 
+# é permitida tanto para "gestor" quanto para "analista".
 
 # --- CONFIGURAÇÕES DO INTERCOM ---
 WORKSPACE_ID = "xwvpdtlu"
 try:
     INTERCOM_ACCESS_TOKEN = st.secrets["INTERCOM_TOKEN"]
 except:
-    INTERCOM_ACCESS_TOKEN = st.text_input("Intercom Token", type="password")
-    if not INTERCOM_ACCESS_TOKEN: st.stop()
+    # ADICIONADO key="token_analista_manual" para evitar reset de página
+    INTERCOM_ACCESS_TOKEN = st.text_input("Intercom Token", type="password", key="token_analista_manual")
+    if not INTERCOM_ACCESS_TOKEN: 
+        st.stop()
 
 HEADERS = {"Authorization": f"Bearer {INTERCOM_ACCESS_TOKEN}", "Accept": "application/json"}
 
-# --- FUNÇÕES (Reaproveitadas simplificadas) ---
+# --- FUNÇÕES ---
 
 @st.cache_data(ttl=3600)
 def get_admin_list():
@@ -42,7 +52,6 @@ def get_admin_list():
     try:
         r = requests.get(url, headers=HEADERS)
         admins = r.json().get('admins', [])
-        # Cria um dicionario {Nome: ID} e uma lista só de nomes
         mapa = {a['name']: a['id'] for a in admins}
         return mapa
     except:
@@ -66,11 +75,10 @@ def fetch_my_conversations(start_date, end_date, admin_id):
     ts_start = int(datetime.combine(start_date, datetime.min.time()).timestamp())
     ts_end = int(datetime.combine(end_date, datetime.max.time()).timestamp())
     
-    # AQUI É O PULO DO GATO: Filtramos direto na API pelo admin_assignee_id
     query_rules = [
         {"field": "created_at", "operator": ">", "value": ts_start},
         {"field": "created_at", "operator": "<", "value": ts_end},
-        {"field": "admin_assignee_id", "operator": "=", "value": admin_id} # Só as minhas!
+        {"field": "admin_assignee_id", "operator": "=", "value": admin_id}
     ]
     
     payload = {
@@ -81,7 +89,6 @@ def fetch_my_conversations(start_date, end_date, admin_id):
     conversas = []
     has_more = True
     
-    # Barra de progresso visual
     bar = st.progress(0, text="Buscando suas conversas...")
     
     while has_more:
@@ -91,7 +98,6 @@ def fetch_my_conversations(start_date, end_date, admin_id):
             batch = data.get('conversations', [])
             conversas.extend(batch)
             
-            # Atualiza barra (efeito visual apenas)
             bar.progress(50, text=f"Baixado: {len(conversas)} conversas...")
             
             if data.get('pages', {}).get('next'):
@@ -117,7 +123,6 @@ if mapa_admins:
     col_sel, col_data, col_btn = st.columns([2, 2, 1])
     
     with col_sel:
-        # Tenta achar o usuário pelo histórico ou pega o primeiro
         usuario_selecionado = st.selectbox("👤 Quem é você?", nomes_ordenados, key="sel_analista")
     
     with col_data:
@@ -125,28 +130,24 @@ if mapa_admins:
         periodo = st.date_input("Período de Análise:", (data_hoje - timedelta(days=7), data_hoje), format="DD/MM/YYYY")
     
     with col_btn:
-        st.write("") # Espaço vazio para alinhar
+        st.write("") 
         st.write("") 
         btn_atualizar = st.button("🔄 Atualizar Meus Dados", type="primary")
 
-    # Só roda se tiver usuário selecionado
     if usuario_selecionado:
         admin_id_alvo = mapa_admins[usuario_selecionado]
         start, end = periodo
         
-        # Busca dados
-        raw = fetch_my_conversations(start, end, admin_id_alvo)
-        mapa_attrs = get_attribute_definitions()
+        with st.spinner("Analisando métricas..."):
+            raw = fetch_my_conversations(start, end, admin_id_alvo)
+            mapa_attrs = get_attribute_definitions()
         
         if raw:
-            # Processamento Rápido
             rows = []
             for c in raw:
                 attrs = c.get('custom_attributes', {})
                 
-                # Tenta pegar Motivo (pelo nome bonito ou feio)
                 motivo = None
-                # Varre os atributos buscando "Motivo de Contato"
                 for k, v in attrs.items():
                     label = mapa_attrs.get(k, k)
                     if label == "Motivo de Contato":
@@ -165,7 +166,6 @@ if mapa_admins:
             
             df = pd.DataFrame(rows)
             
-            # --- CÁLCULO DA META (O Coração do Painel) ---
             total = len(df)
             classificados = len(df[df["Motivo"].notna()])
             pendentes = total - classificados
@@ -173,7 +173,6 @@ if mapa_admins:
             
             st.divider()
             
-            # --- KPI CARDS GIGANTES ---
             k1, k2, k3 = st.columns(3)
             
             k1.metric("Total de Conversas", total)
@@ -182,11 +181,10 @@ if mapa_admins:
                 "Conversas Pendentes", 
                 pendentes, 
                 delta="-Zerado!" if pendentes == 0 else f"{pendentes} para fazer",
-                delta_color="inverse" # Vermelho se tiver pendencia, verde se zero
+                delta_color="inverse"
             )
             
-            # Lógica da cor da meta
-            cor_meta = "normal" if taxa >= 90 else "inverse" # Verde se > 90, Vermelho se < 90
+            cor_meta = "normal" if taxa >= 90 else "inverse"
             k3.metric(
                 "Minha Taxa de Classificação", 
                 f"{taxa:.1f}%", 
@@ -194,11 +192,9 @@ if mapa_admins:
                 delta_color=cor_meta 
             )
 
-            # Barra de Progresso Visual da Meta
             st.write("Progresso da Meta:")
             
-            # Cor da barra muda se bater a meta
-            cor_barra = "#28a745" if taxa >= 90 else "#dc3545" # Verde ou Vermelho
+            cor_barra = "#28a745" if taxa >= 90 else "#dc3545"
             st.markdown(f"""
                 <style>
                     .stProgress > div > div > div > div {{
@@ -214,7 +210,6 @@ if mapa_admins:
 
             st.divider()
 
-            # --- LISTA DE TAREFAS (Ação) ---
             tab_pendentes, tab_todos = st.tabs(["🚨 Pendências (Fazer Agora)", "📋 Histórico Completo"])
             
             with tab_pendentes:
