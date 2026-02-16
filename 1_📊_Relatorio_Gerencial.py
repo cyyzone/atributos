@@ -246,7 +246,6 @@ if 'df_final' in st.session_state:
     tab_graf, tab_equipe, tab_cross, tab_motivos, tab_csat, tab_tempo, tab_tabela = st.tabs(["📊 Distribuição", "👥 Equipe & Performance", "🔀 Cruzamentos", "🔗 Top Motivos", "⭐ CSAT / DSAT", "⏱️ SLA", "📋 Dados"])
 
     with tab_graf:
-        # --- FILTROS NO TOPO ---
         c_filt1, c_filt2 = st.columns([3, 1])
         with c_filt1:
             graf_sel = st.selectbox("Selecione o Atributo:", cols_usuario, key="sel_graf_dist")
@@ -361,25 +360,47 @@ if 'df_final' in st.session_state:
                 
                 st.divider()
                 
+                # --- CONTROLES UNIFICADOS ---
+                c_conf1, c_conf2 = st.columns([2, 1])
+                with c_conf1:
+                    ordem_csat = st.selectbox(
+                        "Ordenar Gráfico de Média por:", 
+                        ["Melhores Notas Primeiro (Ranking)", "Piores Notas Primeiro (Foco DSat)"], 
+                        key="sel_ordem_csat_final" 
+                    )
+                with c_conf2:
+                    qtd_csat = st.slider("Qtd. Motivos:", 5, 50, 10, key="slider_csat_qtd")
+                
+                eh_dsat = "Piores" in ordem_csat
+                
                 if "Motivo de Contato" in df.columns:
-                    # 1. Agrupa e calcula Média + Count
+                    # Agrupa para tirar média e contagem
                     csat_summary = df_csat.groupby("Motivo de Contato")["CSAT Nota"].agg(['mean', 'count']).reset_index()
                     csat_summary.columns = ["Motivo de Contato", "Média", "Qtd"]
                     
-                    # 2. Ordena DECERSCENTE (Maior -> Menor).
-                    # No Plotly Horizontal, o último item do DF aparece no TOPO.
-                    # Queremos 1.0 no topo.
-                    # Se DF = [5, 4, 3, 2, 1] -> 1 fica no topo.
-                    # Então ordenamos descending.
-                    csat_summary = csat_summary.sort_values("Média", ascending=False)
+                    # --- GRÁFICO 1: MÉDIA ---
+                    st.subheader("1. Média de CSAT")
                     
-                    # 3. Rótulo com a quantidade
-                    csat_summary["Label"] = csat_summary.apply(lambda x: f"{x['Média']:.2f} ({int(x['Qtd'])} av.)", axis=1)
-                    
-                    h_csat = max(600, len(csat_summary) * 50)
+                    # Lógica de Ordenação e Filtro:
+                    if eh_dsat:
+                        # Queremos ver as PIORES notas (1.0).
+                        # Pegamos os top N menores valores.
+                        df_chart1 = csat_summary.sort_values("Média", ascending=True).head(qtd_csat)
+                        # Ordenamos Descending para que o Plotly desenhe os menores no TOPO.
+                        df_chart1 = df_chart1.sort_values("Média", ascending=False)
+                    else:
+                        # Queremos ver as MELHORES notas (5.0).
+                        # Pegamos os top N maiores valores.
+                        df_chart1 = csat_summary.sort_values("Média", ascending=False).head(qtd_csat)
+                        # Ordenamos Ascending para que o Plotly desenhe os maiores no TOPO.
+                        df_chart1 = df_chart1.sort_values("Média", ascending=True)
 
-                    fig_csat = px.bar(
-                        csat_summary, 
+                    df_chart1["Label"] = df_chart1.apply(lambda x: f"{x['Média']:.2f} ({int(x['Qtd'])} av.)", axis=1)
+                    
+                    h_c1 = max(400, len(df_chart1) * 50)
+                    
+                    fig1 = px.bar(
+                        df_chart1, 
                         x="Média", 
                         y="Motivo de Contato", 
                         orientation='h', 
@@ -387,12 +408,38 @@ if 'df_final' in st.session_state:
                         color="Média", 
                         color_continuous_scale="RdYlGn", 
                         range_color=[1, 5], 
-                        height=h_csat,
-                        title="Média de CSAT por Motivo (Menores notas no topo)"
+                        height=h_c1,
+                        title=f"Média CSAT (Top {qtd_csat})"
                     )
+                    fig1.update_layout(coloraxis_showscale=False)
+                    st.plotly_chart(fig1, use_container_width=True)
                     
-                    fig_csat.update_layout(coloraxis_showscale=False)
-                    st.plotly_chart(fig_csat, use_container_width=True)
+                    st.divider()
+                    
+                    # --- GRÁFICO 2: VOLUME ---
+                    st.subheader("2. Total de Avaliações (Volume)")
+                    
+                    # Lógica de Ordenação por VOLUME (Sempre Maior para Menor)
+                    # Filtramos os Top N mais volumosos.
+                    df_chart2 = csat_summary.sort_values("Qtd", ascending=False).head(qtd_csat)
+                    # Ordenamos Ascending para que o Plotly desenhe os maiores no TOPO.
+                    df_chart2 = df_chart2.sort_values("Qtd", ascending=True)
+                    
+                    df_chart2["Label"] = df_chart2["Qtd"].astype(int).astype(str)
+                    
+                    h_c2 = max(400, len(df_chart2) * 50)
+                    
+                    fig2 = px.bar(
+                        df_chart2,
+                        x="Qtd",
+                        y="Motivo de Contato",
+                        orientation='h',
+                        text="Label",
+                        height=h_c2,
+                        title=f"Volume de Avaliações (Top {qtd_csat})"
+                    )
+                    fig2.update_xaxes(title="Quantidade")
+                    st.plotly_chart(fig2, use_container_width=True)
 
     with tab_tempo:
         st.header("Análise de Tempo")
