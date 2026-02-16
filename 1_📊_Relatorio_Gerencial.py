@@ -10,15 +10,15 @@ from io import BytesIO
 from utils import check_password, logout_button
 
 # --- CONFIGURAÇÕES ---
-st.set_page_config(page_title="Relatório de Atributos Intercom", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Relatório Gerencial Intercom", page_icon="📊", layout="wide")
 
 # --- BLOQUEIO DE SENHA ---
 usuario = check_password()
 
-if not usuario: # Se não digitou senha
+if not usuario:
     st.stop()
 
-if usuario == "analista": # Se for da equipe (analista), BLOQUEIA aqui
+if usuario == "analista":
     st.error("⛔ Acesso Negado: Área restrita à gestão.")
     st.info("Utilize o menu lateral para acessar o **Painel do Analista**.")
     st.stop()
@@ -29,53 +29,34 @@ WORKSPACE_ID = "xwvpdtlu"
 try:
     INTERCOM_ACCESS_TOKEN = st.secrets["INTERCOM_TOKEN"]
 except:
-    INTERCOM_ACCESS_TOKEN = st.sidebar.text_input(
-        "Intercom Token", 
-        type="password", 
-        key="meu_token_fixo"
-    )
+    INTERCOM_ACCESS_TOKEN = st.sidebar.text_input("Intercom Token", type="password", key="token_gerencial")
 
 if not INTERCOM_ACCESS_TOKEN:
-    st.warning("⚠️ Configure o Token para continuar.")
+    st.warning("⚠️ Configure o Token.")
     st.stop()
 
-HEADERS = {
-    "Authorization": f"Bearer {INTERCOM_ACCESS_TOKEN}",
-    "Accept": "application/json"
-}
+HEADERS = {"Authorization": f"Bearer {INTERCOM_ACCESS_TOKEN}", "Accept": "application/json"}
 
 # --- FUNÇÕES ---
 
 def format_sla_string(seconds):
-    """
-    Converte segundos em formato legível.
-    """
-    if not seconds or pd.isna(seconds) or seconds == 0:
-        return "-"
-    
+    if not seconds or pd.isna(seconds) or seconds == 0: return "-"
     seconds = int(seconds)
-    
     days = seconds // 86400
     rem = seconds % 86400
     hours = rem // 3600
     rem %= 3600
     minutes = rem // 60
     secs = rem % 60
-    
     parts = []
     if days > 0: parts.append(f"{days}d")
     if hours > 0: parts.append(f"{hours}h")
     if minutes > 0: parts.append(f"{minutes}m")
-    
-    if days == 0 and hours == 0:
-        parts.append(f"{secs}s")
-    
-    if not parts: return "< 1s"
-    return " ".join(parts)
+    if days == 0 and hours == 0: parts.append(f"{secs}s")
+    return " ".join(parts) if parts else "< 1s"
 
 @st.cache_data(ttl=3600)
 def get_attribute_definitions():
-    """Busca os nomes bonitos dos atributos"""
     url = "https://api.intercom.io/data_attributes"
     params = {"model": "conversation"}
     try:
@@ -86,7 +67,6 @@ def get_attribute_definitions():
 
 @st.cache_data(ttl=3600)
 def get_all_admins():
-    """Busca a lista de todos os agentes (ID -> Nome)"""
     url = "https://api.intercom.io/admins"
     try:
         r = requests.get(url, headers=HEADERS)
@@ -104,14 +84,10 @@ def fetch_conversations(start_date, end_date, team_ids=None):
         {"field": "created_at", "operator": ">", "value": ts_start},
         {"field": "created_at", "operator": "<", "value": ts_end}
     ]
-    
     if team_ids:
         query_rules.append({"field": "team_assignee_id", "operator": "IN", "value": team_ids})
 
-    payload = {
-        "query": {"operator": "AND", "value": query_rules},
-        "pagination": {"per_page": 150}
-    }
+    payload = {"query": {"operator": "AND", "value": query_rules}, "pagination": {"per_page": 150}}
     
     conversas = []
     has_more = True
@@ -123,7 +99,7 @@ def fetch_conversations(start_date, end_date, team_ids=None):
             data = resp.json()
             batch = data.get('conversations', [])
             conversas.extend(batch)
-            status_text.caption(f"📥 Baixando... {len(conversas)} conversas encontradas.")
+            status_text.caption(f"📥 Baixando... {len(conversas)} conversas.")
             
             if data.get('pages', {}).get('next'):
                 payload['pagination']['starting_after'] = data['pages']['next']['starting_after']
@@ -133,7 +109,6 @@ def fetch_conversations(start_date, end_date, team_ids=None):
         except Exception as e:
             st.error(f"Erro: {e}")
             break
-            
     status_text.empty()
     return conversas
 
@@ -141,112 +116,74 @@ def process_data(conversas, mapping, admin_map):
     rows = []
     for c in conversas:
         link = f"https://app.intercom.com/a/inbox/{WORKSPACE_ID}/inbox/conversation/{c['id']}"
-        
-        # Pega nome do atendente
         admin_id = c.get('admin_assignee_id')
-        if admin_id:
-            assignee_name = admin_map.get(str(admin_id), f"ID {admin_id}")
-        else:
-            assignee_name = "Não atribuído"
+        assignee_name = admin_map.get(str(admin_id), f"ID {admin_id}") if admin_id else "Não atribuído"
 
-        # --- CAPTURA DO CSAT ---
-        rating_data = c.get('conversation_rating') or {}
-        csat_score = rating_data.get('rating') 
-        csat_comment = rating_data.get('remark')
-        
-        # --- CÁLCULO DE TEMPOS (SLA) ---
         stats = c.get('statistics') or {}
-        
-        # 1. Tempo para primeira resposta (segundos)
         time_reply_sec = stats.get('time_to_admin_reply') or stats.get('response_time')
-        
-        # 2. Tempo total para resolução (segundos)
         time_close_sec = stats.get('time_to_close')
-        
-        # Fallback
         if not time_close_sec:
-            last_close_at = stats.get('last_close_at')
-            created_at = c.get('created_at')
-            if last_close_at and created_at:
-                time_close_sec = last_close_at - created_at
-        
-        # Strings formatadas
-        sla_resolucao_str = format_sla_string(time_close_sec)
-        sla_resposta_str = format_sla_string(time_reply_sec)
+            if stats.get('last_close_at') and c.get('created_at'):
+                time_close_sec = stats.get('last_close_at') - c.get('created_at')
 
         row = {
             "ID": c['id'],
             "timestamp_real": c['created_at'], 
             "Data": datetime.fromtimestamp(c['created_at']).strftime("%d/%m/%Y %H:%M"),
-            "Data_Dia": datetime.fromtimestamp(c['created_at']).strftime("%Y-%m-%d"),
             "Atendente": assignee_name,
             "Link": link,
-            "CSAT Nota": csat_score,
-            "CSAT Comentario": csat_comment,
-            "Tempo Resposta (seg)": time_reply_sec,   # Numérico
-            "Tempo Resolução (seg)": time_close_sec,  # Numérico
-            "Tempo Resposta": sla_resposta_str,       # Texto
-            "Tempo Resolução": sla_resolucao_str      # Texto
+            "Tempo Resposta (seg)": time_reply_sec,
+            "Tempo Resolução (seg)": time_close_sec,
+            "Tempo Resposta": format_sla_string(time_reply_sec),
+            "Tempo Resolução": format_sla_string(time_close_sec),
+            "CSAT Nota": (c.get('conversation_rating') or {}).get('rating'),
+            "CSAT Comentario": (c.get('conversation_rating') or {}).get('remark')
         }
         
         attrs = c.get('custom_attributes', {})
         for key, value in attrs.items():
             nome_bonito = mapping.get(key)
-            if nome_bonito:
-                row[nome_bonito] = value
-            else:
-                row[key] = value
+            if nome_bonito: row[nome_bonito] = value
+            else: row[key] = value
         rows.append(row)
     
     df = pd.DataFrame(rows)
-    
     coluna_teimosa = "Motivo 2 (Se houver)"
     if not df.empty and coluna_teimosa not in df.columns:
         df[coluna_teimosa] = None 
-
+        
     if not df.empty:
         df = df.sort_values(by="timestamp_real", ascending=True)
-        df = df.reset_index(drop=True)
-        
     return df
 
 def gerar_excel_multias(df, colunas_selecionadas):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        
-        # 1. Abas de Totais
         for col in colunas_selecionadas:
             if col in df.columns and col not in ["Data", "Link", "ID", "Qtd. Atributos"]:
                 try:
                     resumo = df[col].value_counts().reset_index()
                     resumo.columns = [col, 'Quantidade']
-                    nome_aba = col[:30].replace(":", "").replace("/", "-").replace("?", "").replace("*", "").replace("(", "").replace(")", "")
+                    nome_aba = col[:30].replace("/", "-")
                     resumo.to_excel(writer, index=False, sheet_name=nome_aba)
-                    writer.sheets[nome_aba].set_column('A:A', 50)
-                except Exception as e:
-                    pass
+                except: pass
 
-        # 2. Aba Base Completa
-        cols_fixas = ["Data", "Atendente", "Tempo Resposta", "Tempo Resolução", "CSAT Nota", "CSAT Comentario", "Link", "Qtd. Atributos"]
-        cols_extras = [c for c in colunas_selecionadas if c not in cols_fixas]
-        cols_finais = cols_fixas + cols_extras
-        
+        cols_fixas = ["Data", "Atendente", "Tempo Resposta", "Tempo Resolução", "CSAT Nota", "CSAT Comentario", "Link"]
+        cols_finais = cols_fixas + [c for c in colunas_selecionadas if c not in cols_fixas]
         cols_existentes = [c for c in cols_finais if c in df.columns]
-        
         df[cols_existentes].to_excel(writer, index=False, sheet_name='Base Completa')
         writer.sheets['Base Completa'].set_column('A:A', 18) 
-        
     return output.getvalue()
 
 # --- INTERFACE ---
 
-st.title(f"📊 Relatório de Atributos + SLA")
+st.title("📊 Relatório Gerencial: Atributos & SLA")
 
 with st.sidebar:
     st.header("Filtros")
     if st.button("🧹 Limpar Cache"):
         st.cache_data.clear()
-        st.success("Cache limpo!")
+        st.success("Limpo!")
 
     data_hoje = datetime.now()
     periodo = st.date_input("Período", (data_hoje - timedelta(days=7), data_hoje), format="DD/MM/YYYY")
@@ -261,335 +198,211 @@ if btn_run:
     with st.spinner("Analisando dados..."):
         mapa = get_attribute_definitions()
         admins_map = get_all_admins()
-        
-        # Busca Apenas Período Atual (Otimizado)
         raw = fetch_conversations(start, end, ids_times)
         
         if raw:
             df = process_data(raw, mapa, admins_map)
             st.session_state['df_final'] = df
-            
-            try:
-                st.toast(f"✅ Sucesso! {len(df)} conversas carregadas.")
-            except:
-                st.sidebar.success(f"✅ Sucesso! {len(df)} conversas carregadas.")
-            
+            st.toast(f"✅ {len(df)} conversas carregadas.")
         else:
-            st.warning("Nenhum dado encontrado para o período selecionado.")
+            st.warning("Nenhum dado encontrado.")
 
 if 'df_final' in st.session_state:
     df = st.session_state['df_final']
-    
     st.divider()
     
     # --- SELEÇÃO DE COLUNAS ---
     todas_colunas = list(df.columns)
-    
     COL_EXPANSAO = "Expansão (Passagem de bastão para CSM)"
     sugestao = ["Tipo de Atendimento", COL_EXPANSAO, "Motivo de Contato", "Motivo 2 (Se houver)", "Status do atendimento"]
-    padrao_existente = [c for c in sugestao if c in todas_colunas]
+    padrao = [c for c in sugestao if c in todas_colunas]
+    ignorar = ["ID", "timestamp_real", "Data", "Link", "Atendente", "CSAT Nota", "CSAT Comentario", "Tempo Resposta (seg)", "Tempo Resolução (seg)", "Tempo Resposta", "Tempo Resolução"]
     
-    colunas_ignorar = ["ID", "timestamp_real", "Data", "Data_Dia", "Link", "Qtd. Atributos", "Atendente", "CSAT Nota", "CSAT Comentario", "Tempo Resposta (seg)", "Tempo Resolução (seg)", "Tempo Resposta", "Tempo Resolução"]
-    
-    cols_usuario = st.multiselect(
-        "Selecione os atributos para análise:",
-        options=[c for c in todas_colunas if c not in colunas_ignorar],
-        default=padrao_existente,
-        key="seletor_colunas_principal"
-    )
+    cols_usuario = st.multiselect("Atributos para análise:", [c for c in todas_colunas if c not in ignorar], default=padrao)
 
-    # --- CÁLCULO DE COMPLEXIDADE ---
-    if cols_usuario:
-        cols_para_contar = [c for c in cols_usuario if c not in colunas_ignorar + ["Status do atendimento", "Tipo de Atendimento"]]
-        
-        if cols_para_contar:
-            df["Qtd. Atributos"] = df[cols_para_contar].notna().sum(axis=1)
-        else:
-            df["Qtd. Atributos"] = 0
-    else:
-        df["Qtd. Atributos"] = 0
-
-    # --- RESUMO EXECUTIVO (SEM DELTA) ---
-    st.markdown("### 📌 Resumo do Período Selecionado")
+    # --- KPIs ---
+    st.markdown("### 📌 Resumo")
+    k1, k2, k3, k4, k5 = st.columns(5)
     
-    kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
-    
-    # 1. KPIs de Volume
     total_conv = len(df)
     preenchidos = df["Motivo de Contato"].notna().sum() if "Motivo de Contato" in df.columns else 0
+    resolvidos = df[df["Status do atendimento"] == "Resolvido"].shape[0] if "Status do atendimento" in df.columns else 0
+    tempo_med = df["Tempo Resolução (seg)"].mean() if "Tempo Resolução (seg)" in df.columns else 0
     
-    # 2. KPI de Resolvidos
-    resolvidos = 0
-    if "Status do atendimento" in df.columns:
-        resolvidos = df[df["Status do atendimento"] == "Resolvido"].shape[0]
-    
-    # 3. KPI de Tempo (Média)
-    col_tempo_seg = "Tempo Resolução (seg)"
-    tempo_medio_seg = df[col_tempo_seg].mean() if col_tempo_seg in df.columns else 0
-    tempo_str = format_sla_string(tempo_medio_seg)
-    
-    # 4. KPI Motivo Principal
-    top_motivo_txt = "N/A"
-    qtd_top = 0
+    top_motivo = "N/A"
     if "Motivo de Contato" in df.columns:
-        counts = df["Motivo de Contato"].value_counts()
-        if not counts.empty:
-            full_name = counts.index[0]
-            qtd_top = counts.values[0]
-            top_motivo_txt = str(full_name).split(">")[-1].strip()
+        c = df["Motivo de Contato"].value_counts()
+        if not c.empty: top_motivo = c.index[0].split(">")[-1].strip()
 
-    # --- EXIBIÇÃO ---
-    kpi1.metric("Total Conversas", total_conv)
-    kpi2.metric("Classificados", f"{preenchidos}")
-    kpi3.metric("Resolvidos", resolvidos)
-    kpi4.metric("Tempo Médio", tempo_str)
-    kpi5.metric("Principal Motivo", top_motivo_txt, f"{qtd_top} casos", delta_color="off")
+    k1.metric("Total Conversas", total_conv)
+    k2.metric("Classificados", preenchidos)
+    k3.metric("Resolvidos", resolvidos)
+    k4.metric("Tempo Médio", format_sla_string(tempo_med))
+    k5.metric("Top Motivo", top_motivo)
 
     st.divider()
 
-    # --- ABAS DE ANÁLISE ---
-    tab_grafico, tab_equipe, tab_cruzamento, tab_motivos, tab_csat, tab_tempo, tab_tabela = st.tabs(["📊 Distribuição", "👥 Equipe", "🔀 Cruzamentos", "🔗 Motivo x Motivo", "⭐ CSAT", "⏱️ Tempo & SLA", "📋 Detalhes & Export"])
+    # --- ABAS ---
+    tab_graf, tab_equipe, tab_cross, tab_motivos, tab_csat, tab_tempo, tab_tabela = st.tabs(["📊 Distribuição", "👥 Equipe & Performance", "🔀 Cruzamentos", "🔗 Top Motivos", "⭐ CSAT / DSAT", "⏱️ SLA", "📋 Dados"])
 
-    with tab_grafico:
+    with tab_graf:
         c1, c2 = st.columns([2, 1])
         with c1:
             if cols_usuario:
-                graf_sel = st.selectbox("Atributo:", cols_usuario, key="sel_bar")
+                graf_sel = st.selectbox("Atributo:", cols_usuario)
                 df_clean = df[df[graf_sel].notna()]
                 contagem = df_clean[graf_sel].value_counts().reset_index()
-                contagem.columns = ["Opção", "Quantidade"]
-                total_registros = contagem["Quantidade"].sum()
-                contagem["Texto_Label"] = contagem["Quantidade"].apply(lambda x: f"{x} ({(x / total_registros * 100):.1f}%)")
-                altura_dinamica = max(400, 150 + (len(contagem) * 35))
-                fig_bar = px.bar(contagem, x="Quantidade", y="Opção", text="Texto_Label", title=f"Distribuição: {graf_sel}", orientation='h', height=altura_dinamica)
-                fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
-                st.plotly_chart(fig_bar, use_container_width=True)
-            else:
-                st.warning("Selecione atributos no topo.")
+                contagem.columns = ["Opção", "Qtd"]
+                total = contagem["Qtd"].sum()
+                contagem["Label"] = contagem["Qtd"].apply(lambda x: f"{x} ({(x/total*100):.1f}%)")
+                fig = px.bar(contagem, x="Qtd", y="Opção", text="Label", orientation='h', title=f"Distribuição: {graf_sel}")
+                fig.update_layout(yaxis={'categoryorder':'total ascending'})
+                st.plotly_chart(fig, use_container_width=True)
         with c2:
-             if cols_usuario:
-                 st.write("**Ranking Completo:**")
-                 st.dataframe(df[graf_sel].value_counts(), use_container_width=True)
+            if cols_usuario:
+                st.write("**Ranking:**")
+                st.dataframe(df[graf_sel].value_counts(), use_container_width=True)
 
     with tab_equipe:
-        st.subheader("Performance do Time")
-        vol_por_agente = df['Atendente'].value_counts().reset_index()
-        vol_por_agente.columns = ['Agente', 'Volume']
-        total_geral_agentes = vol_por_agente['Volume'].sum()
-        vol_por_agente['Label'] = vol_por_agente['Volume'].apply(lambda x: f"{x} ({(x/total_geral_agentes*100):.1f}%)")
-        c1, c2 = st.columns([2, 1])
-        c1.plotly_chart(px.bar(vol_por_agente, x='Agente', y='Volume', title="Volume de Conversas por Agente", text='Label'), use_container_width=True)
-        c2.dataframe(vol_por_agente[['Agente', 'Volume']], hide_index=True, use_container_width=True)
+        # 1. Gráfico de Volume
+        st.subheader("Volume de Conversas")
+        vol = df['Atendente'].value_counts().reset_index()
+        vol.columns = ['Agente', 'Volume']
+        st.plotly_chart(px.bar(vol, x='Agente', y='Volume', text='Volume'), use_container_width=True)
+        
         st.divider()
-        st.subheader("🕵️ Detalhe por Agente")
-        opcoes_cruzamento = ["Status do atendimento"] + [c for c in cols_usuario if c != "Status do atendimento"]
-        cruzamento_agente = st.selectbox("Cruzar Atendente com:", opcoes_cruzamento, key="sel_cruzamento_agente")
-        if cruzamento_agente in df.columns:
-            df_agente_cross = df.dropna(subset=[cruzamento_agente])
-            agrupado = df_agente_cross.groupby(["Atendente", cruzamento_agente]).size().reset_index(name='Qtd')
-            agrupado['Total_Agente'] = agrupado.groupby("Atendente")['Qtd'].transform('sum')
-            agrupado['Label'] = agrupado.apply(lambda x: f"{x['Qtd']} ({(x['Qtd'] / x['Total_Agente'] * 100):.1f}%)", axis=1)
-            fig_ag = px.bar(agrupado, x="Atendente", y="Qtd", color=cruzamento_agente, text="Label", title=f"Distribuição de {cruzamento_agente} por Agente")
-            st.plotly_chart(fig_ag, use_container_width=True)
+        
+        # 2. NOVO: Matriz de Eficiência (Scatter Plot)
+        st.subheader("🚀 Matriz de Eficiência: Volume x Tempo")
+        st.info("💡 **Como ler:** Analistas no canto **inferior direito** atendem muito e rápido. No **superior esquerdo**, atendem pouco e demoram (atenção).")
+        
+        if "Tempo Resolução (seg)" in df.columns:
+            df_perf = df.groupby("Atendente").agg(
+                Volume=('ID', 'count'),
+                Tempo_Medio_Seg=('Tempo Resolução (seg)', 'mean')
+            ).reset_index()
+            
+            # Remove quem tem tempo zerado (opcional)
+            df_perf = df_perf[df_perf['Tempo_Medio_Seg'] > 0]
+            df_perf['Tempo Médio'] = df_perf['Tempo_Medio_Seg'].apply(format_sla_string)
+            
+            fig_scatter = px.scatter(
+                df_perf, 
+                x="Volume", 
+                y="Tempo_Medio_Seg", 
+                text="Atendente",
+                size="Volume",
+                color="Tempo_Medio_Seg",
+                color_continuous_scale="RdYlGn_r", # Verde = Tempo Baixo
+                hover_data=["Tempo Médio"],
+                title="Relação: Quem atende mais vs Quem demora mais"
+            )
+            # Linhas de média
+            media_vol = df_perf["Volume"].mean()
+            media_tempo = df_perf["Tempo_Medio_Seg"].mean()
+            
+            fig_scatter.add_vline(x=media_vol, line_dash="dash", line_color="gray", annotation_text="Média Vol.")
+            fig_scatter.add_hline(y=media_tempo, line_dash="dash", line_color="gray", annotation_text="Média Tempo")
+            
+            st.plotly_chart(fig_scatter, use_container_width=True)
+        else:
+            st.warning("Dados de tempo não disponíveis para gerar a matriz.")
 
-    with tab_cruzamento:
-        def plot_empilhado_pct(df_input, col_y, col_color, title):
-            grouped = df_input.groupby([col_y, col_color]).size().reset_index(name='Qtd')
-            grouped['Total_Grupo'] = grouped.groupby(col_y)['Qtd'].transform('sum')
-            grouped['Label'] = grouped.apply(lambda x: f"{x['Qtd']} ({(x['Qtd']/x['Total_Grupo']*100):.0f}%)", axis=1)
-            qtd_categorias_y = grouped[col_y].nunique()
-            altura = max(500, 100 + (qtd_categorias_y * 30))
-            fig = px.bar(grouped, y=col_y, x='Qtd', color=col_color, text='Label', orientation='h', title=title, height=altura)
-            fig.update_layout(yaxis={'categoryorder':'total ascending'})
-            return fig
-        if "Motivo de Contato" in df.columns and "Status do atendimento" in df.columns:
-            st.plotly_chart(plot_empilhado_pct(df.dropna(subset=["Motivo de Contato", "Status do atendimento"]), "Motivo de Contato", "Status do atendimento", "Status por Motivo"), use_container_width=True)
-        if "Motivo de Contato" in df.columns and "Tipo de Atendimento" in df.columns:
-            st.plotly_chart(plot_empilhado_pct(df.dropna(subset=["Motivo de Contato", "Tipo de Atendimento"]), "Motivo de Contato", "Tipo de Atendimento", "Tipo por Motivo"), use_container_width=True)
-        if "Motivo de Contato" in df.columns and COL_EXPANSAO in df.columns:
-            st.plotly_chart(plot_empilhado_pct(df.dropna(subset=["Motivo de Contato", COL_EXPANSAO]), "Motivo de Contato", COL_EXPANSAO, "Expansão por Motivo"), use_container_width=True)
+    with tab_cross:
+        def plot_stack(df_in, x_col, color_col, title):
+            g = df_in.groupby([x_col, color_col]).size().reset_index(name='Qtd')
+            g['Total'] = g.groupby(x_col)['Qtd'].transform('sum')
+            g['Pct'] = g.apply(lambda x: f"{(x['Qtd']/x['Total']*100):.0f}%", axis=1)
+            f = px.bar(g, y=x_col, x='Qtd', color=color_col, text='Pct', orientation='h', title=title)
+            f.update_layout(yaxis={'categoryorder':'total ascending'})
+            return f
+
+        # NOVO LAYOUT LADO A LADO
+        c_lado1, c_lado2 = st.columns(2)
+        
+        with c_lado1:
+            if "Motivo de Contato" in df.columns and "Status do atendimento" in df.columns:
+                st.plotly_chart(plot_stack(df.dropna(subset=["Motivo de Contato", "Status do atendimento"]), "Motivo de Contato", "Status do atendimento", "1. Status por Motivo"), use_container_width=True)
+        
+        with c_lado2:
+            if "Motivo de Contato" in df.columns and "Tipo de Atendimento" in df.columns:
+                st.plotly_chart(plot_stack(df.dropna(subset=["Motivo de Contato", "Tipo de Atendimento"]), "Motivo de Contato", "Tipo de Atendimento", "2. Tipo por Motivo"), use_container_width=True)
+        
+        st.divider()
+        
+        # NOVO GRÁFICO: TIPO X STATUS
+        st.subheader("3. Eficiência por Canal (Tipo x Status)")
+        st.caption("Entenda qual canal tem mais resolução e qual tem mais abandono.")
+        
+        if "Tipo de Atendimento" in df.columns and "Status do atendimento" in df.columns:
+            st.plotly_chart(plot_stack(df.dropna(subset=["Tipo de Atendimento", "Status do atendimento"]), "Tipo de Atendimento", "Status do atendimento", "Status por Canal de Entrada"), use_container_width=True)
+        else:
+            st.info("Necessário ter 'Tipo de Atendimento' e 'Status do atendimento'.")
 
     with tab_motivos:
         col_m1, col_m2 = "Motivo de Contato", "Motivo 2 (Se houver)"
         if col_m1 in df.columns and col_m2 in df.columns:
-            ranking_global = pd.concat([df[col_m1], df[col_m2]]).value_counts().reset_index()
-            ranking_global.columns = ["Motivo Unificado", "Incidência Total"]
-            total_motivos = ranking_global["Incidência Total"].sum()
-            ranking_global["Label"] = ranking_global["Incidência Total"].apply(lambda x: f"{x} ({(x/total_motivos*100):.1f}%)")
-            c_rank1, c_rank2 = st.columns([2, 1])
-            with c_rank1:
-                fig_global = px.bar(ranking_global, x="Incidência Total", y="Motivo Unificado", orientation='h', text="Label", height=max(500, 100 + (len(ranking_global) * 30)))
-                fig_global.update_layout(yaxis={'categoryorder':'total ascending'})
-                st.plotly_chart(fig_global, use_container_width=True)
-            with c_rank2:
-                st.dataframe(ranking_global, use_container_width=True, hide_index=True)
+            # NOVO: Slider para limitar
+            qtd_top = st.slider("Quantidade de Motivos no Ranking:", 5, 50, 10)
+            
+            rank = pd.concat([df[col_m1], df[col_m2]]).value_counts().reset_index()
+            rank.columns = ["Motivo", "Total"]
+            
+            # Filtra Top N
+            rank_cut = rank.head(qtd_top)
+            
+            total_abs = rank["Total"].sum() # Total global para % correta
+            rank_cut["Label"] = rank_cut["Total"].apply(lambda x: f"{x} ({(x/total_abs*100):.1f}%)")
+            
+            fig_glob = px.bar(rank_cut, x="Total", y="Motivo", orientation='h', text="Label", title=f"Top {qtd_top} Motivos de Contato", height=max(400, qtd_top*40))
+            fig_glob.update_layout(yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig_glob, use_container_width=True)
+            
+            with st.expander("Ver lista completa"):
+                st.dataframe(rank, use_container_width=True)
 
     with tab_csat:
         if "CSAT Nota" not in df.columns:
-             st.warning("Gere os dados novamente.")
+             st.warning("Sem dados.")
         else:
             df_csat = df.dropna(subset=["CSAT Nota"])
             if df_csat.empty:
-                st.info("Sem CSAT.")
+                st.info("Sem avaliações.")
             else:
                 k1, k2 = st.columns(2)
-                k1.metric("Média Geral CSAT", f"{df_csat['CSAT Nota'].mean():.2f}/5.0")
-                k2.metric("Total de Avaliações", len(df_csat))
+                k1.metric("Média Geral", f"{df_csat['CSAT Nota'].mean():.2f}/5.0")
+                k2.metric("Total Avaliações", len(df_csat))
                 
-                # GRÁFICO 1: MÉDIA
+                # NOVO: Filtro de Ordenação (DSat)
+                ordem_csat = st.radio("Ordenar Gráfico por:", ["Melhores Notas Primeiro (Ranking)", "Piores Notas Primeiro (Foco DSat)"], horizontal=True)
+                ascending_bool = True if "Piores" in ordem_csat else False
+                
                 if "Motivo de Contato" in df.columns:
-                    csat_por_motivo = df_csat.groupby("Motivo de Contato")["CSAT Nota"].mean().reset_index().sort_values("CSAT Nota")
-                    fig_csat_avg = px.bar(csat_por_motivo, x="CSAT Nota", y="Motivo de Contato", orientation='h', text_auto='.2f', color="CSAT Nota", color_continuous_scale="RdYlGn", range_color=[1, 5])
-                    fig_csat_avg.update_layout(coloraxis_showscale=False)
-                    st.plotly_chart(fig_csat_avg, use_container_width=True)
+                    csat_motivo = df_csat.groupby("Motivo de Contato")["CSAT Nota"].mean().reset_index().sort_values("CSAT Nota", ascending=ascending_bool)
                     
-                    st.divider()
+                    color_scale = "RdYlGn" if not ascending_bool else "RdYlGn_r" # Inverte cor se for DSat
                     
-                    # GRÁFICO 2: VOLUME (RESTAURADO)
-                    st.subheader("Volume de Avaliações por Nota e Motivo")
-                    df_csat["Nota Label"] = df_csat["CSAT Nota"].astype(int).astype(str)
-                    
-                    csat_grouped = df_csat.groupby(["Motivo de Contato", "Nota Label"]).size().reset_index(name='Qtd')
-                    csat_grouped['Total_Motivo'] = csat_grouped.groupby("Motivo de Contato")['Qtd'].transform('sum')
-                    csat_grouped['Label_Pct'] = csat_grouped.apply(lambda x: f"{x['Qtd']} ({(x['Qtd']/x['Total_Motivo']*100):.0f}%)", axis=1)
-
-                    fig_csat_vol = px.bar(
-                        csat_grouped, 
-                        x="Qtd", 
-                        y="Motivo de Contato", 
-                        color="Nota Label", 
-                        text="Label_Pct",
-                        orientation='h',
-                        category_orders={"Nota Label": ["1", "2", "3", "4", "5"]},
-                        color_discrete_map={"1": "#FF4B4B", "2": "#FF8C00", "3": "#FFD700", "4": "#9ACD32", "5": "#008000"}
-                    )
-                    fig_csat_vol.update_layout(yaxis={'categoryorder':'total ascending'})
-                    st.plotly_chart(fig_csat_vol, use_container_width=True)
+                    fig_csat = px.bar(csat_motivo, x="CSAT Nota", y="Motivo de Contato", orientation='h', text_auto='.2f', color="CSAT Nota", color_continuous_scale=color_scale, range_color=[1, 5])
+                    fig_csat.update_layout(coloraxis_showscale=False)
+                    st.plotly_chart(fig_csat, use_container_width=True)
 
     with tab_tempo:
-        st.header("⏱️ Análise de Tempo e SLA")
-        
-        col_res_seg = "Tempo Resolução (seg)"
-        col_rep_seg = "Tempo Resposta (seg)"
-        
-        df_tempo = df.dropna(subset=[col_res_seg])
-        
-        if df_tempo.empty:
-            st.warning("Não há dados de tempo de resolução disponíveis.")
-        else:
-            t1, t2, t3 = st.columns(3)
-            med_resol_seg = df_tempo[col_res_seg].mean()
-            med_resp_seg = df_tempo[col_rep_seg].mean()
-            
-            t1.metric("Tempo Médio de Resolução", format_sla_string(med_resol_seg))
-            t2.metric("Tempo Médio 1ª Resposta", format_sla_string(med_resp_seg))
-            t3.metric("Conversas consideradas", len(df_tempo))
-            
-            st.divider()
-            
-            # Gráfico 1: Velocidade por Agente
-            st.subheader("⚡ Velocidade por Agente")
-            tempo_agente = df_tempo.groupby("Atendente")[col_res_seg].mean().reset_index().sort_values(col_res_seg)
-            tempo_agente["Label"] = tempo_agente[col_res_seg].apply(format_sla_string)
-            
-            fig_time_agente = px.bar(
-                tempo_agente, 
-                x=col_res_seg, 
-                y="Atendente", 
-                text="Label",  
-                orientation='h', 
-                title=f"Média de Tempo para Resolver (Menor é melhor)"
-            )
-            fig_time_agente.update_xaxes(showticklabels=False)
-            st.plotly_chart(fig_time_agente, use_container_width=True)
-            
-            # Gráfico 2: Motivos mais demorados
-            if "Motivo de Contato" in df.columns:
-                st.divider()
-                st.subheader("🐢 Motivos mais demorados")
-                tempo_motivo = df_tempo.groupby("Motivo de Contato")[col_res_seg].mean().reset_index().sort_values(col_res_seg, ascending=False)
-                tempo_motivo["Label"] = tempo_motivo[col_res_seg].apply(format_sla_string)
-                
-                h_motivo = max(400, 100 + (len(tempo_motivo) * 30))
-                
-                fig_time_motivo = px.bar(
-                    tempo_motivo, 
-                    x=col_res_seg, 
-                    y="Motivo de Contato", 
-                    text="Label",
-                    orientation='h', 
-                    height=h_motivo,
-                    title=f"Média de Tempo por Motivo"
-                )
-                fig_time_motivo.update_xaxes(showticklabels=False)
-                fig_time_motivo.update_layout(yaxis={'categoryorder':'total ascending'})
-                st.plotly_chart(fig_time_motivo, use_container_width=True)
+        st.header("Análise de Tempo")
+        col_res = "Tempo Resolução (seg)"
+        if col_res in df.columns:
+            df_t = df.dropna(subset=[col_res])
+            if not df_t.empty:
+                # Ranking Agentes
+                st.subheader("Velocidade por Agente")
+                tag = df_t.groupby("Atendente")[col_res].mean().reset_index().sort_values(col_res)
+                tag["Label"] = tag[col_res].apply(format_sla_string)
+                f_tag = px.bar(tag, x=col_res, y="Atendente", text="Label", orientation='h', title="Média de Tempo (Menor é melhor)")
+                f_tag.update_xaxes(showticklabels=False)
+                st.plotly_chart(f_tag, use_container_width=True)
+            else: st.warning("Sem dados de tempo.")
 
     with tab_tabela:
-        if "CSAT Nota" not in df.columns:
-            st.warning("⚠️ Dados antigos na memória.")
-            st.info("👉 Limpe o cache e Gere os Dados novamente.")
-            st.stop()
+        excel = gerar_excel_multias(df, cols_usuario)
+        st.download_button("📥 Baixar Excel Completo", data=excel, file_name="relatorio_gerencial.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
         
-        c1, c2 = st.columns([3, 1])
-        with c1:
-            f1, f2 = st.columns(2)
-            ocultar_vazios = f1.checkbox("Ocultar vazios", value=True, key="chk_ocultar_vazios")
-            ver_complexas = f2.checkbox("🔥 Apenas complexas (2+ atributos)", key="chk_ver_complexas")
-        with c2:
-            excel_data = gerar_excel_multias(df, cols_usuario)
-            st.download_button("📥 Baixar Excel", data=excel_data, file_name="relatorio_completo.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
-
-        df_view = df.copy()
-        if ocultar_vazios: df_view = df_view[df_view["Qtd. Atributos"] > 0]
-        if ver_complexas: df_view = df_view[df_view["Qtd. Atributos"] >= 2]
-
-        st.divider()
-        st.caption("🔎 Filtros Avançados")
-        
-        # Filtro Atendente
-        agentes_unicos = sorted(df_view["Atendente"].astype(str).unique().tolist())
-        sel_agentes = st.multiselect("Filtrar por Atendente:", agentes_unicos, key="filtro_agente_tab")
-        if sel_agentes:
-            df_view = df_view[df_view["Atendente"].isin(sel_agentes)]
-
-        # Filtros Cascata
-        col_f1, col_v1 = st.columns(2)
-        with col_f1:
-            coluna_1 = st.selectbox("1º Filtro (Atributo Principal):", ["(Todos)"] + cols_usuario, index=0, key="filtro_coluna_1")
-        with col_v1:
-            if coluna_1 != "(Todos)":
-                opcoes_1 = sorted(df_view[coluna_1].astype(str).unique().tolist())
-                valores_1 = st.multiselect(f"Selecione valores em '{coluna_1}':", options=opcoes_1, key="filtro_valores_1")
-                if valores_1: df_view = df_view[df_view[coluna_1].astype(str).isin(valores_1)]
-
-        if coluna_1 != "(Todos)":
-            st.markdown("⬇️ *E dentro destes resultados...*")
-            col_f2, col_v2 = st.columns(2)
-            with col_f2:
-                cols_restantes = [c for c in cols_usuario if c != coluna_1]
-                coluna_2 = st.selectbox("2º Filtro (Atributo Refinamento):", ["(Nenhum)"] + cols_restantes, index=0, key="filtro_coluna_2")
-            with col_v2:
-                if coluna_2 != "(Nenhum)":
-                    opcoes_2 = sorted(df_view[coluna_2].astype(str).unique().tolist())
-                    valores_2 = st.multiselect(f"Selecione valores em '{coluna_2}':", options=opcoes_2, key=f"v2_{coluna_2}")
-                    if valores_2: df_view = df_view[df_view[coluna_2].astype(str).isin(valores_2)]
-
-        st.divider()
-        st.write(f"**Resultados encontrados:** {len(df_view)}")
-        
-        fixas = ["Data", "Atendente", "Tempo Resposta", "Tempo Resolução", "CSAT Nota", "Link"]
-        fixas_existentes = [c for c in fixas if c in df_view.columns]
-        extras = [c for c in cols_usuario if c not in fixas_existentes]
-        cols_display = fixas_existentes + extras
-
-        st.dataframe(
-            df_view[cols_display], 
-            use_container_width=True,
-            column_config={
-                "Link": st.column_config.LinkColumn("Link", display_text="🔗 Abrir"),
-                "CSAT Nota": st.column_config.NumberColumn("CSAT", format="%d ⭐"),
-                "Tempo Resolução": st.column_config.TextColumn("Tempo Resolução"),
-                "Tempo Resposta": st.column_config.TextColumn("Tempo 1ª Resp")
-            }
-        )
+        st.dataframe(df[["Data", "Atendente", "Tempo Resolução"] + cols_usuario], use_container_width=True)
