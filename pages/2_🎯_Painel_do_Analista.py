@@ -81,7 +81,6 @@ def get_attribute_definitions():
     except:
         return {}
 
-@st.cache_data(ttl=300, show_spinner=False)
 def fetch_my_conversations(start_date, end_date, admin_id):
     url = "https://api.intercom.io/conversations/search"
     ts_start = int(datetime.combine(start_date, datetime.min.time()).timestamp())
