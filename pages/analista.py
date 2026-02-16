@@ -11,7 +11,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 try:
-    from utils import check_password
+    from utils import check_password, logout_button
 except ImportError:
     st.error("Erro: utils.py não encontrado.")
     st.stop()
@@ -32,6 +32,8 @@ except:
     INTERCOM_ACCESS_TOKEN = st.text_input("Intercom Token", type="password", key="token_analista_manual")
     if not INTERCOM_ACCESS_TOKEN: 
         st.stop()
+
+logout_button()
 
 HEADERS = {"Authorization": f"Bearer {INTERCOM_ACCESS_TOKEN}", "Accept": "application/json"}
 
