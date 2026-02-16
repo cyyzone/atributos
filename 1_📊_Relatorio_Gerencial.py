@@ -74,6 +74,7 @@ def get_all_admins():
     except:
         return {}
 
+#--Função principal, por favor não mecher!
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_conversations(start_date, end_date, team_ids=None):
     url = "https://api.intercom.io/conversations/search"
