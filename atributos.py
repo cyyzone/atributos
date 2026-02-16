@@ -254,7 +254,7 @@ with st.sidebar:
 
     data_hoje = datetime.now()
     periodo = st.date_input("Período", (data_hoje - timedelta(days=7), data_hoje), format="DD/MM/YYYY")
-    team_input = st.text_input("IDs dos Times:", value="9156876")
+    team_input = st.text_input("IDs dos Times:", value="2975006")
     btn_run = st.button("🚀 Gerar Dados", type="primary")
     logout_button()
 
