@@ -3,32 +3,52 @@ import requests # O motoboy. É ele que leva e traz as mensagens pra API.
 import time # O relógio. Essencial pra gente saber quanto tempo esperar quando a API cansa.
 import pymongo
 
+import streamlit as st
+import requests
+import time
+
 def check_password():
-    """Gerencia autenticação simples via secrets."""
-    if "APP_PASSWORD" not in st.secrets: # Primeiro, eu verifico se eu mesma não esqueci de criar a senha no cofre (.streamlit/secrets.toml).
-        st.error("ERRO: Configure 'APP_PASSWORD' no arquivo .streamlit/secrets.toml")
-        return False # Se não tem senha configurada, ninguém entra.
+    """
+    Verifica a senha e retorna o NÍVEL DE ACESSO:
+    - Retorna "gestor" se usar a senha de admin.
+    - Retorna "analista" se usar a senha do time.
+    - Retorna False se não estiver logado.
+    """
+    
+    # 1. Verifica se já está logado na sessão
+    if st.session_state.get("password_correct", False):
+        return st.session_state.get("user_role", None)
 
-    def password_entered(): # Essa é uma "função dentro da função". Ela só roda quando a pessoa aperta Enter.
-        if st.session_state["password"] == st.secrets["APP_PASSWORD"]: # Eu comparo o que a pessoa digitou (st.session_state["password"]) com a senha real (st.secrets).
-            st.session_state["password_correct"] = True # Aprovada!
-            del st.session_state["password"] # Apago a senha da memória por segurança. Ninguém precisa ver.
+    # 2. Função de validação ao digitar
+    def password_entered():
+        senha_digitada = st.session_state["password_input"]
+        
+        if senha_digitada == st.secrets["SENHA_GESTOR"]:
+            st.session_state["password_correct"] = True
+            st.session_state["user_role"] = "gestor" # <--- Crachá de Chefe
+            del st.session_state["password_input"]
+            
+        elif senha_digitada == st.secrets["SENHA_TIME"]:
+            st.session_state["password_correct"] = True
+            st.session_state["user_role"] = "analista" # <--- Crachá de Analista
+            del st.session_state["password_input"]
+            
         else:
-            st.session_state["password_correct"] = False # Reprovada!
+            st.session_state["password_correct"] = False
 
-    if st.session_state.get("password_correct", False): # Se a pessoa JÁ logou antes (está na memória como True), eu deixo passar direto.
-        return True
-# Se não logou ainda, mostro a caixinha pra digitar.
+    # 3. Caixa de Login
+    st.markdown("### 🔒 Acesso Restrito")
     st.text_input(
-        "🔒 Digite a senha de acesso:", 
-        type="password",  # Isso transforma as letras em bolinhas ••••
-        on_change=password_entered,  # Quando der Enter, roda a função lá de cima.
-        key="password" # Guardo o que foi digitado nessa variável.
+        "Digite sua senha de acesso:", 
+        type="password", 
+        on_change=password_entered, 
+        key="password_input"
     )
-    # Se ela tentou entrar e errou (password_correct é False), eu aviso.
+    
+    # Mensagem de erro
     if "password_correct" in st.session_state and not st.session_state["password_correct"]:
         st.error("😕 Senha incorreta.")
-# Enquanto não acertar, a porta continua fechada (False).
+
     return False
 
 # O Motoboy Inteligente (make_api_request)
