@@ -2,18 +2,18 @@ import streamlit as st
 import pandas as pd
 import requests
 import time
-import plotly.express as px
 from datetime import datetime, timedelta
 import sys
 import os
 
 # --- IMPORTAÇÃO DO UTILS ---
+# Ajuste de caminho para garantir que utils.py seja encontrado
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 try:
     from utils import check_password, logout_button
 except ImportError:
-    st.error("Erro: utils.py não encontrado.")
+    st.error("Erro: utils.py não encontrado. Verifique se o arquivo está na pasta raiz.")
     st.stop()
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
@@ -26,16 +26,19 @@ if not nivel_acesso:
 
 # --- CONFIGURAÇÕES DO INTERCOM ---
 WORKSPACE_ID = "xwvpdtlu"
+
 try:
     INTERCOM_ACCESS_TOKEN = st.secrets["INTERCOM_TOKEN"]
 except:
-    INTERCOM_ACCESS_TOKEN = st.text_input("Intercom Token", type="password", key="token_analista_manual")
-    if not INTERCOM_ACCESS_TOKEN: 
-        st.stop()
+    INTERCOM_ACCESS_TOKEN = st.sidebar.text_input("Intercom Token", type="password", key="token_analista_manual")
 
-logout_button()
+if not INTERCOM_ACCESS_TOKEN:
+    st.warning("⚠️ Token não configurado.")
+    st.stop()
 
 HEADERS = {"Authorization": f"Bearer {INTERCOM_ACCESS_TOKEN}", "Accept": "application/json"}
+
+logout_button()
 
 # --- CONFIGURAÇÃO DE FILTROS FIXOS ---
 TIMES_PERMITIDOS_IDS = [2975006, 1972225]
@@ -63,10 +66,12 @@ def get_admin_list():
         
         dados_admins = {}
         for a in admins:
-            dados_admins[a['name']] = {
-                'id': a['id'],
-                'team_ids': [int(tid) for tid in a.get('team_ids', [])]
-            }
+            # Filtra apenas quem tem ID e Nome
+            if a.get('id') and a.get('name'):
+                dados_admins[a['name']] = {
+                    'id': a['id'],
+                    'team_ids': [int(tid) for tid in a.get('team_ids', [])]
+                }
         return dados_admins
     except:
         return {}
@@ -149,6 +154,7 @@ if dados_admins:
     # --- FILTRAGEM DE ANALISTAS ---
     analistas_filtrados = []
     for nome, dados in dados_admins.items():
+        # Verifica interseção de times (Se o analista pertence a algum time permitido)
         if set(dados['team_ids']) & set(TIMES_PERMITIDOS_IDS):
             analistas_filtrados.append(nome)
             
@@ -189,6 +195,7 @@ if dados_admins:
                     attrs = c.get('custom_attributes', {})
                     
                     motivo = None
+                    # Tenta achar o motivo pelo nome bonito ou pela chave
                     for k, v in attrs.items():
                         label = mapa_attrs.get(k, k)
                         if label == "Motivo de Contato":
@@ -239,6 +246,7 @@ if dados_admins:
             delta_color="inverse"
         )
         
+        # Cor dinâmica da meta
         cor_meta = "normal" if taxa >= 90 else "inverse"
         k3.metric(
             "Minha Taxa", 
@@ -248,13 +256,13 @@ if dados_admins:
         )
 
         st.write("Progresso da Meta:")
-        cor_barra = "#28a745" if taxa >= 90 else "#dc3545"
-        st.markdown(f"""<style>.stProgress > div > div > div > div {{ background-color: {cor_barra}; }}</style>""", unsafe_allow_html=True)
+        # Barra de progresso visual
         st.progress(min(taxa / 100, 1.0))
         
         if taxa < 90:
-            st.warning(f"⚠️ Atenção, {nome_atual}! Faltam **{int((0.9 * total) - classificados) + 1}** conversas.")
+            st.warning(f"⚠️ Atenção, {nome_atual}! Faltam **{int(((0.9 * total) - classificados)) + 1}** conversas para bater 90%.")
         else:
+            st.balloons()
             st.success(f"🎉 Parabéns! Meta batida!")
 
         st.divider()
@@ -264,16 +272,15 @@ if dados_admins:
         with tab_pendentes:
             df_pendentes = df[df["Status"] == "🚨 Pendente"]
             if not df_pendentes.empty:
-                st.write(f"Você tem **{len(df_pendentes)} conversas fechadas** sem motivo classificado.")
+                st.error(f"Você tem **{len(df_pendentes)} conversas fechadas** sem motivo classificado.")
                 st.dataframe(
                     df_pendentes[["Data", "ID", "Link"]],
                     use_container_width=True,
-                    column_config={"Link": st.column_config.LinkColumn("Link", display_text="🔗 Abrir")},
+                    column_config={"Link": st.column_config.LinkColumn("Link", display_text="🔗 Abrir no Intercom")},
                     hide_index=True
                 )
             else:
-                st.balloons()
-                st.success("Tudo limpo! 🚀")
+                st.success("Tudo limpo! Nenhuma pendência encontrada. 🚀")
 
         with tab_todos:
             st.dataframe(
@@ -282,3 +289,5 @@ if dados_admins:
                 column_config={"Link": st.column_config.LinkColumn("Link", display_text="Abrir")},
                 hide_index=True
             )
+else:
+    st.info("Carregando lista de analistas...")
