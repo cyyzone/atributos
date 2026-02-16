@@ -36,7 +36,7 @@ except:
 HEADERS = {"Authorization": f"Bearer {INTERCOM_ACCESS_TOKEN}", "Accept": "application/json"}
 
 # --- CONFIGURAÇÃO DE FILTROS FIXOS ---
-# Apenas analistas destes times aparecerão na lista
+# Apenas estes times serão considerados na busca
 TIMES_PERMITIDOS_IDS = [2975006, 1972225]
 
 # --- FUNÇÕES ---
@@ -64,7 +64,7 @@ def get_admin_list():
         for a in admins:
             dados_admins[a['name']] = {
                 'id': a['id'],
-                'team_ids': [int(tid) for tid in a.get('team_ids', [])] # Garante que sejam números
+                'team_ids': [int(tid) for tid in a.get('team_ids', [])]
             }
         return dados_admins
     except:
@@ -90,8 +90,10 @@ def fetch_my_conversations(start_date, end_date, admin_id):
         {"field": "created_at", "operator": ">", "value": ts_start},
         {"field": "created_at", "operator": "<", "value": ts_end},
         {"field": "admin_assignee_id", "operator": "=", "value": admin_id},
-        # NOVA REGRA: Apenas conversas FECHADAS
-        {"field": "state", "operator": "=", "value": "closed"}
+        {"field": "state", "operator": "=", "value": "closed"},
+        # --- AQUI ESTÁ O BLOQUEIO DE BACKOFFICE ---
+        # Garante que a conversa pertença EXCLUSIVAMENTE aos times permitidos
+        {"field": "team_assignee_id", "operator": "IN", "value": TIMES_PERMITIDOS_IDS}
     ]
     
     payload = {
@@ -127,17 +129,15 @@ def fetch_my_conversations(start_date, end_date, admin_id):
 # --- INTERFACE DO ANALISTA ---
 
 st.title("🎯 Painel do Analista: Minha Performance")
-st.markdown("Acompanhe sua meta de classificação (Apenas conversas **fechadas**).")
+st.markdown("Acompanhe sua meta de classificação (Apenas conversas **fechadas** dos times de **Suporte**).")
 
 # Carrega dados
 dados_admins = get_admin_list()
 
 if dados_admins:
     # --- FILTRAGEM DE ANALISTAS ---
-    # Só mostra analistas que pertencem a pelo menos um dos times permitidos
     analistas_filtrados = []
     for nome, dados in dados_admins.items():
-        # Verifica se existe interseção entre os times do analista e os permitidos
         if set(dados['team_ids']) & set(TIMES_PERMITIDOS_IDS):
             analistas_filtrados.append(nome)
             
@@ -202,7 +202,7 @@ if dados_admins:
             
             k1, k2, k3 = st.columns(3)
             
-            k1.metric("Conversas Fechadas", total)
+            k1.metric("Conversas de Suporte", total)
             
             k2.metric(
                 "Pendentes de Classificação", 
@@ -256,4 +256,4 @@ if dados_admins:
                 )
 
         else:
-            st.info("Nenhuma conversa fechada encontrada neste período.")
+            st.info("Nenhuma conversa encontrada neste período para os times selecionados.")
