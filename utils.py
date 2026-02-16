@@ -196,3 +196,16 @@ def carregar_tickets_mongo(termo_busca=None):
     cursor = collection.find(filtro, {"_id": 0}).sort("updated_at", -1).limit(1000)
     
     return list(cursor)
+
+def logout_button():
+    """Desenha um botão de sair na barra lateral"""
+    # Linha divisória para separar dos filtros
+    st.sidebar.markdown("---") 
+    
+    if st.sidebar.button("🚪 Sair do Sistema"):
+        # Limpa as chaves de autenticação
+        st.session_state["password_correct"] = False
+        st.session_state["user_role"] = None
+        
+        # Força o recarregamento da página para voltar ao Login
+        st.rerun()
