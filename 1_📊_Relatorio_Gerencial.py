@@ -272,7 +272,7 @@ if 'df_final' in st.session_state:
         
         st.divider()
         
-        # 2. NOVO: Matriz de Eficiência (Scatter Plot)
+        # 2. Matriz de Eficiência (Scatter Plot)
         st.subheader("🚀 Matriz de Eficiência: Volume x Tempo")
         st.info("💡 **Como ler:** Analistas no canto **inferior direito** atendem muito e rápido. No **superior esquerdo**, atendem pouco e demoram (atenção).")
         
@@ -282,7 +282,6 @@ if 'df_final' in st.session_state:
                 Tempo_Medio_Seg=('Tempo Resolução (seg)', 'mean')
             ).reset_index()
             
-            # Remove quem tem tempo zerado (opcional)
             df_perf = df_perf[df_perf['Tempo_Medio_Seg'] > 0]
             df_perf['Tempo Médio'] = df_perf['Tempo_Medio_Seg'].apply(format_sla_string)
             
@@ -317,20 +316,19 @@ if 'df_final' in st.session_state:
             f.update_layout(yaxis={'categoryorder':'total ascending'})
             return f
 
-        # NOVO LAYOUT LADO A LADO
-        c_lado1, c_lado2 = st.columns(2)
+        # GRÁFICO 1: STATUS X MOTIVO (Vertical)
+        if "Motivo de Contato" in df.columns and "Status do atendimento" in df.columns:
+            st.plotly_chart(plot_stack(df.dropna(subset=["Motivo de Contato", "Status do atendimento"]), "Motivo de Contato", "Status do atendimento", "1. Status por Motivo"), use_container_width=True)
         
-        with c_lado1:
-            if "Motivo de Contato" in df.columns and "Status do atendimento" in df.columns:
-                st.plotly_chart(plot_stack(df.dropna(subset=["Motivo de Contato", "Status do atendimento"]), "Motivo de Contato", "Status do atendimento", "1. Status por Motivo"), use_container_width=True)
-        
-        with c_lado2:
-            if "Motivo de Contato" in df.columns and "Tipo de Atendimento" in df.columns:
-                st.plotly_chart(plot_stack(df.dropna(subset=["Motivo de Contato", "Tipo de Atendimento"]), "Motivo de Contato", "Tipo de Atendimento", "2. Tipo por Motivo"), use_container_width=True)
+        st.divider()
+
+        # GRÁFICO 2: TIPO X MOTIVO (Vertical)
+        if "Motivo de Contato" in df.columns and "Tipo de Atendimento" in df.columns:
+            st.plotly_chart(plot_stack(df.dropna(subset=["Motivo de Contato", "Tipo de Atendimento"]), "Motivo de Contato", "Tipo de Atendimento", "2. Tipo por Motivo"), use_container_width=True)
         
         st.divider()
         
-        # NOVO GRÁFICO: TIPO X STATUS
+        # GRÁFICO 3: TIPO X STATUS (Eficiência por Canal)
         st.subheader("3. Eficiência por Canal (Tipo x Status)")
         st.caption("Entenda qual canal tem mais resolução e qual tem mais abandono.")
         
@@ -342,16 +340,13 @@ if 'df_final' in st.session_state:
     with tab_motivos:
         col_m1, col_m2 = "Motivo de Contato", "Motivo 2 (Se houver)"
         if col_m1 in df.columns and col_m2 in df.columns:
-            # NOVO: Slider para limitar
             qtd_top = st.slider("Quantidade de Motivos no Ranking:", 5, 50, 10)
             
             rank = pd.concat([df[col_m1], df[col_m2]]).value_counts().reset_index()
             rank.columns = ["Motivo", "Total"]
-            
-            # Filtra Top N
             rank_cut = rank.head(qtd_top)
             
-            total_abs = rank["Total"].sum() # Total global para % correta
+            total_abs = rank["Total"].sum()
             rank_cut["Label"] = rank_cut["Total"].apply(lambda x: f"{x} ({(x/total_abs*100):.1f}%)")
             
             fig_glob = px.bar(rank_cut, x="Total", y="Motivo", orientation='h', text="Label", title=f"Top {qtd_top} Motivos de Contato", height=max(400, qtd_top*40))
@@ -363,42 +358,38 @@ if 'df_final' in st.session_state:
 
     with tab_csat:
         if "CSAT Nota" not in df.columns:
-             st.warning("Sem dados.")
+             st.warning("Gere os dados novamente.")
         else:
             df_csat = df.dropna(subset=["CSAT Nota"])
             if df_csat.empty:
-                st.info("Sem avaliações.")
+                st.info("Sem CSAT.")
             else:
                 k1, k2 = st.columns(2)
-                k1.metric("Média Geral", f"{df_csat['CSAT Nota'].mean():.2f}/5.0")
-                k2.metric("Total Avaliações", len(df_csat))
+                k1.metric("Média Geral CSAT", f"{df_csat['CSAT Nota'].mean():.2f}/5.0")
+                k2.metric("Total de Avaliações", len(df_csat))
                 
                 st.divider()
                 
-                # --- CONTROLES ---
-                # Aqui estava o problema. Ajustamos a lógica:
+                # --- CONTROLES COM CORREÇÃO DE LÓGICA ---
                 ordem_csat = st.radio(
                     "Ordenar Gráfico por:", 
                     ["Melhores Notas Primeiro (Ranking)", "Piores Notas Primeiro (Foco DSat)"], 
-                    horizontal=True
+                    horizontal=True,
+                    key="radio_ordem_csat" 
                 )
                 
-                # CORREÇÃO DA LÓGICA DE ORDENAÇÃO:
-                # Se quero "Piores" no topo, preciso ordenar DESC (5 -> 1), para o 1 ficar no final da lista e o Plotly desenhar no topo.
-                # Se quero "Melhores" no topo, preciso ordenar ASC (1 -> 5), para o 5 ficar no final da lista e o Plotly desenhar no topo.
                 eh_dsat = "Piores" in ordem_csat
-                ascending_bool = True if not eh_dsat else False 
+                
+                # CORREÇÃO DA LÓGICA DE ORDENAÇÃO:
+                # Inverti a lógica anterior que estava dando "ao contrário"
+                if eh_dsat:
+                    ascending_bool = True  # Para DSAT (1.0 no Topo) -> Tenta Ascending
+                else:
+                    ascending_bool = False # Para Ranking (5.0 no Topo) -> Tenta Descending
                 
                 if "Motivo de Contato" in df.columns:
-                    # Agrupa e calcula média
                     csat_motivo = df_csat.groupby("Motivo de Contato")["CSAT Nota"].mean().reset_index()
-                    
-                    # Ordena baseado na escolha
                     csat_motivo = csat_motivo.sort_values("CSAT Nota", ascending=ascending_bool)
-                    
-                    # CORREÇÃO DA COR:
-                    # A cor não deve inverter. 1.0 é sempre Vermelho, 5.0 é sempre Verde.
-                    color_scale = "RdYlGn" 
                     
                     fig_csat = px.bar(
                         csat_motivo, 
@@ -407,17 +398,36 @@ if 'df_final' in st.session_state:
                         orientation='h', 
                         text_auto='.2f', 
                         color="CSAT Nota", 
-                        color_continuous_scale=color_scale, 
-                        range_color=[1, 5], # Garante que a escala vá de 1 a 5 fixo
-                        height=max(400, len(csat_motivo) * 35) # Altura dinâmica
+                        color_continuous_scale="RdYlGn", 
+                        range_color=[1, 5],
+                        height=max(400, len(csat_motivo) * 35)
                     )
                     
-                    fig_csat.update_layout(
-                        coloraxis_showscale=False,
-                        yaxis_title=None,
-                        xaxis_title="Nota Média"
-                    )
+                    fig_csat.update_layout(coloraxis_showscale=False)
                     st.plotly_chart(fig_csat, use_container_width=True)
+                    
+                    st.divider()
+                    
+                    # GRÁFICO 2: VOLUME
+                    st.subheader("Volume de Avaliações por Nota e Motivo")
+                    df_csat["Nota Label"] = df_csat["CSAT Nota"].astype(int).astype(str)
+                    
+                    csat_grouped = df_csat.groupby(["Motivo de Contato", "Nota Label"]).size().reset_index(name='Qtd')
+                    csat_grouped['Total_Motivo'] = csat_grouped.groupby("Motivo de Contato")['Qtd'].transform('sum')
+                    csat_grouped['Label_Pct'] = csat_grouped.apply(lambda x: f"{x['Qtd']} ({(x['Qtd']/x['Total_Motivo']*100):.0f}%)", axis=1)
+
+                    fig_csat_vol = px.bar(
+                        csat_grouped, 
+                        x="Qtd", 
+                        y="Motivo de Contato", 
+                        color="Nota Label", 
+                        text="Label_Pct",
+                        orientation='h',
+                        category_orders={"Nota Label": ["1", "2", "3", "4", "5"]},
+                        color_discrete_map={"1": "#FF4B4B", "2": "#FF8C00", "3": "#FFD700", "4": "#9ACD32", "5": "#008000"}
+                    )
+                    fig_csat_vol.update_layout(yaxis={'categoryorder':'total ascending'})
+                    st.plotly_chart(fig_csat_vol, use_container_width=True)
 
     with tab_tempo:
         st.header("Análise de Tempo")
@@ -426,12 +436,36 @@ if 'df_final' in st.session_state:
             df_t = df.dropna(subset=[col_res])
             if not df_t.empty:
                 # Ranking Agentes
-                st.subheader("Velocidade por Agente")
+                st.subheader("⚡ Velocidade por Agente")
                 tag = df_t.groupby("Atendente")[col_res].mean().reset_index().sort_values(col_res)
                 tag["Label"] = tag[col_res].apply(format_sla_string)
                 f_tag = px.bar(tag, x=col_res, y="Atendente", text="Label", orientation='h', title="Média de Tempo (Menor é melhor)")
                 f_tag.update_xaxes(showticklabels=False)
                 st.plotly_chart(f_tag, use_container_width=True)
+                
+                st.divider()
+                
+                # NOVO: RESTAURADO GRÁFICO TEMPO X MOTIVO
+                st.subheader("🐢 Motivos mais demorados (Média de Resolução)")
+                if "Motivo de Contato" in df.columns:
+                    # Agrupa e ordena para que os mais lentos fiquem no TOPO do gráfico (ascending=True no sort põe maior valor no fim da lista, que o Plotly põe no topo)
+                    t_motivo = df_t.groupby("Motivo de Contato")[col_res].mean().reset_index().sort_values(col_res, ascending=True)
+                    t_motivo["Label"] = t_motivo[col_res].apply(format_sla_string)
+                    
+                    h_dyn = max(400, len(t_motivo) * 30)
+                    
+                    fig_tm = px.bar(
+                        t_motivo, 
+                        x=col_res, 
+                        y="Motivo de Contato", 
+                        text="Label", 
+                        orientation='h', 
+                        height=h_dyn,
+                        title="Tempo Médio por Motivo"
+                    )
+                    fig_tm.update_xaxes(showticklabels=False)
+                    st.plotly_chart(fig_tm, use_container_width=True)
+                
             else: st.warning("Sem dados de tempo.")
 
     with tab_tabela:
