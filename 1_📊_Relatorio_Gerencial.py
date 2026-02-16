@@ -246,18 +246,29 @@ if 'df_final' in st.session_state:
     tab_graf, tab_equipe, tab_cross, tab_motivos, tab_csat, tab_tempo, tab_tabela = st.tabs(["📊 Distribuição", "👥 Equipe & Performance", "🔀 Cruzamentos", "🔗 Top Motivos", "⭐ CSAT / DSAT", "⏱️ SLA", "📋 Dados"])
 
     with tab_graf:
-        c1, c2 = st.columns([2, 1])
-        
+        # --- FILTROS NO TOPO ---
+        c_filt1, c_filt2 = st.columns([3, 1])
+        with c_filt1:
+            graf_sel = st.selectbox("Selecione o Atributo:", cols_usuario, key="sel_graf_dist")
+        with c_filt2:
+            qtd_dist = st.slider("Qtd. Itens:", 5, 50, 10, key="slider_dist_qtd")
+
         if cols_usuario:
-            graf_sel = st.selectbox("Atributo:", cols_usuario, key="sel_graf_dist")
+            c1, c2 = st.columns([2, 1])
             
+            # Fonte única
             df_clean = df[df[graf_sel].notna()]
             contagem = df_clean[graf_sel].value_counts().reset_index()
             contagem.columns = ["Opção", "Qtd"]
             
-            total_registros = contagem["Qtd"].sum()
+            # --- APLICANDO O FILTRO TOP N ---
+            contagem = contagem.head(qtd_dist) # Pega apenas os primeiros N itens
+            
+            total_registros = contagem["Qtd"].sum() # Recalcula total com base no filtro ou total geral? Geralmente mantemos % do visualizado
+            
             contagem["Label"] = contagem.apply(lambda x: f"{x['Qtd']} ({(x['Qtd']/total_registros*100):.1f}%)", axis=1)
             
+            # Ordena DESC (Maior -> Menor)
             contagem = contagem.sort_values("Qtd", ascending=False).reset_index(drop=True)
 
             with c1:
@@ -267,14 +278,14 @@ if 'df_final' in st.session_state:
                     y="Opção", 
                     text="Label", 
                     orientation='h', 
-                    title=f"Distribuição: {graf_sel}",
+                    title=f"Distribuição: {graf_sel} (Top {qtd_dist})",
                     height=max(400, len(contagem) * 35)
                 )
                 fig.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig, use_container_width=True)
                 
             with c2:
-                st.write("**Ranking:**")
+                st.write(f"**Ranking (Top {qtd_dist}):**")
                 st.dataframe(contagem[["Opção", "Qtd"]], use_container_width=True, hide_index=True)
         else:
             st.warning("Selecione atributos no topo da página.")
@@ -319,22 +330,17 @@ if 'df_final' in st.session_state:
             st.warning("Dados de tempo não disponíveis.")
 
     with tab_cross:
-        # --- FILTRO NOVO ---
+        # --- FILTRO SLIDER ---
         qtd_cross = st.slider("Quantidade de itens no Ranking:", 5, 50, 10, key="slider_cross")
 
         def plot_stack(df_in, x_col, color_col, title, limit=10):
-            # 1. Filtra Top N
             top_n = df_in[x_col].value_counts().head(limit).index.tolist()
             df_filtered = df_in[df_in[x_col].isin(top_n)]
 
-            # 2. Agrupa
             g = df_filtered.groupby([x_col, color_col]).size().reset_index(name='Qtd')
-            
-            # 3. Calcula %
             g['Total'] = g.groupby(x_col)['Qtd'].transform('sum')
             g['Pct'] = g.apply(lambda x: f"{(x['Qtd']/x['Total']*100):.0f}%", axis=1)
 
-            # 4. Plota HORIZONTAL (Y=Categorias, X=Qtd)
             h_dyn = max(400, len(top_n) * 35)
             
             f = px.bar(
@@ -463,11 +469,32 @@ if 'df_final' in st.session_state:
                 st.divider()
                 
                 st.subheader("🐢 Motivos mais demorados (Média de Resolução)")
+                
+                # --- NOVO SLIDER PARA FILTRAR OS MAIS DEMORADOS ---
+                qtd_sla = st.slider("Qtd. Motivos:", 5, 50, 10, key="slider_sla")
+                
                 if "Motivo de Contato" in df.columns:
-                    t_motivo = df_t.groupby("Motivo de Contato")[col_res].mean().reset_index().sort_values(col_res, ascending=True)
+                    # 1. Agrupa e calcula média
+                    t_motivo = df_t.groupby("Motivo de Contato")[col_res].mean().reset_index()
+                    
+                    # 2. Ordena DECERSCENTE (Mais demorados primeiro) para pegar o TOP N
+                    t_motivo = t_motivo.sort_values(col_res, ascending=False).head(qtd_sla)
+                    
+                    # 3. Ordena CRESCENTE para o Plotly desenhar corretamente (Maior em cima)
+                    t_motivo = t_motivo.sort_values(col_res, ascending=True)
+                    
                     t_motivo["Label"] = t_motivo[col_res].apply(format_sla_string)
-                    h_dyn = max(400, len(t_motivo) * 30)
-                    fig_tm = px.bar(t_motivo, x=col_res, y="Motivo de Contato", text="Label", orientation='h', height=h_dyn, title="Tempo Médio por Motivo")
+                    h_dyn = max(400, len(t_motivo) * 35)
+                    
+                    fig_tm = px.bar(
+                        t_motivo, 
+                        x=col_res, 
+                        y="Motivo de Contato", 
+                        text="Label", 
+                        orientation='h', 
+                        height=h_dyn, 
+                        title=f"Top {qtd_sla} Motivos mais demorados"
+                    )
                     fig_tm.update_xaxes(showticklabels=False)
                     st.plotly_chart(fig_tm, use_container_width=True)
             else: st.warning("Sem dados de tempo.")
