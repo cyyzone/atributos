@@ -223,6 +223,18 @@ if 'df_final' in st.session_state:
 
     # --- KPIs ---
     st.markdown("### 📌 Resumo")
+    
+    # Ajuste visual: Diminui a fonte e impede o corte do texto longo
+    st.markdown("""
+        <style>
+        div[data-testid="stMetricValue"] {
+            font-size: 1.3rem !important; 
+            white-space: normal !important; 
+            line-height: 1.2 !important; 
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
     k1, k2, k3, k4, k5 = st.columns(5)
     
     total_conv = len(df)
