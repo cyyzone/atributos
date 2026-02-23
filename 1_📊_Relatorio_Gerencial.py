@@ -298,7 +298,7 @@ if 'df_final' in st.session_state:
         st.divider()
         
         st.subheader("🚀 Matriz de Eficiência: Volume x Tempo")
-        st.info("💡 **Como ler:** Analistas no canto **inferior direito** atendem muito e rápido. No **superior esquerdo**, atendem pouco e demoram (atenção).")
+        st.info("💡 **Como ler:** O canto inferior direito mostra quem atendeu mais chamados em menos tempo. O canto superior esquerdo mostra quem atendeu um volume menor, mas levou mais tempo. Isso é muito comum para quem assume os casos mais complexos.")
         
         if "Tempo Resolução (seg)" in df.columns:
             df_perf = df.groupby("Atendente").agg(Volume=('ID', 'count'), Tempo_Medio_Seg=('Tempo Resolução (seg)', 'mean')).reset_index()
