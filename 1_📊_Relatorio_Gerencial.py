@@ -292,7 +292,7 @@ if 'df_final' in st.session_state:
         else:
             st.warning("Selecione atributos no topo da página.")
 
-    # --- NOVA SEÇÃO: TAXA DE CLASSIFICAÇÃO ---
+    if aba_selecionada == "👥 Equipe & Performance":
         st.subheader("🎯 Taxa de Classificação (Conversas Resolvidas)")
         
         # Filtra apenas os chamados resolvidos
