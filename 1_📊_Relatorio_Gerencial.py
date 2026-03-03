@@ -485,35 +485,40 @@ if 'df_final' in st.session_state:
             else: st.warning("Sem dados de tempo.")
 
 with tab_tabela:
-        # --- 1. CRIAR AS CAIXAS DE FILTROS ---
-        c1, c2, c3, c4, c_exp = st.columns(5)
-        
-        with c1:
-            agentes_unicos = sorted(df["Atendente"].astype(str).unique())
-            sel_agentes = st.multiselect("👤 Analista:", agentes_unicos, key="sel_agente_final")
+        # 1. CRIAR O FORMULÁRIO DE FILTROS
+        with st.form("form_filtros_tabela"):
+            st.write("🔍 Filtros da Pesquisa")
+            c1, c2, c3, c4 = st.columns(4)
             
-        with c2:
-            if "Tipo de Atendimento" in df.columns:
-                tipos_unicos = sorted(df["Tipo de Atendimento"].dropna().astype(str).unique())
-                sel_tipos = st.multiselect("💬 Tipo:", tipos_unicos)
-            else:
-                sel_tipos = []
+            with c1:
+                agentes_unicos = sorted(df["Atendente"].astype(str).unique())
+                sel_agentes = st.multiselect("👤 Analista:", agentes_unicos)
                 
-        with c3:
-            if "Motivo de Contato" in df.columns:
-                motivos_unicos = sorted(df["Motivo de Contato"].dropna().astype(str).unique())
-                sel_motivos = st.multiselect("🎯 Motivo:", motivos_unicos)
-            else:
-                sel_motivos = []
-                
-        with c4:
-            if "Status do atendimento" in df.columns:
-                status_unicos = sorted(df["Status do atendimento"].dropna().astype(str).unique())
-                sel_status = st.multiselect("🚦 Status:", status_unicos)
-            else:
-                sel_status = []
+            with c2:
+                if "Tipo de Atendimento" in df.columns:
+                    tipos_unicos = sorted(df["Tipo de Atendimento"].dropna().astype(str).unique())
+                    sel_tipos = st.multiselect("💬 Tipo:", tipos_unicos)
+                else:
+                    sel_tipos = []
+                    
+            with c3:
+                if "Motivo de Contato" in df.columns:
+                    motivos_unicos = sorted(df["Motivo de Contato"].dropna().astype(str).unique())
+                    sel_motivos = st.multiselect("🎯 Motivo:", motivos_unicos)
+                else:
+                    sel_motivos = []
+                    
+            with c4:
+                if "Status do atendimento" in df.columns:
+                    status_unicos = sorted(df["Status do atendimento"].dropna().astype(str).unique())
+                    sel_status = st.multiselect("🚦 Status:", status_unicos)
+                else:
+                    sel_status = []
 
-        # --- 2. APLICAR OS FILTROS NO DATAFRAME ---
+            # O botão que envia todos os filtros de uma vez
+            aplicar = st.form_submit_button("Aplicar Filtros")
+
+        # 2. APLICAR OS FILTROS NO DATAFRAME
         df_view = df.copy()
         
         if sel_agentes:
@@ -528,15 +533,15 @@ with tab_tabela:
         if sel_status:
             df_view = df_view[df_view["Status do atendimento"].isin(sel_status)]
 
-        # --- 3. CRIAR O BOTÃO DE EXCEL (AGORA COM DADOS FILTRADOS) ---
-        with c_exp:
-            st.write("") # Espaço em branco para alinhar o botão
-            # AQUI ESTÁ A MUDANÇA: Usamos df_view no lugar de df
+        # 3. EXIBIR A TABELA E O BOTÃO DE EXCEL
+        c_resumo, c_botao = st.columns([4, 1])
+        
+        with c_resumo:
+            st.caption(f"Exibindo **{len(df_view)}** conversas após os filtros.")
+            
+        with c_botao:
             excel = gerar_excel_multias(df_view, cols_usuario)
             st.download_button("📥 Baixar Excel", data=excel, file_name="relatorio_filtrado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary", use_container_width=True)
-            
-        # --- 4. EXIBIR A TABELA FILTRADA NA TELA ---
-        st.caption(f"Exibindo **{len(df_view)}** conversas após os filtros.")
         
         cols_display = ["Data", "Atendente", "Link", "Tempo Resolução"] + cols_usuario
         cols_existentes = [c for c in cols_display if c in df_view.columns]
