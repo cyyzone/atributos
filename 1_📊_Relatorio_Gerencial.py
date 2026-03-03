@@ -135,10 +135,16 @@ def process_data(conversas, mapping, admin_map):
             "ID": c['id'],
             "timestamp_real": c['created_at'], 
             "Data": datetime.fromtimestamp(c['created_at']).strftime("%d/%m/%Y %H:%M"),
-            "Estado": estado_pt, # Esta é a nova linha que adicionamos
+            "Estado": estado_pt,
             "Atendente": assignee_name,
             "Link": link,
-             }
+            "Tempo Resposta (seg)": time_reply_sec,
+            "Tempo Resolução (seg)": time_close_sec,
+            "Tempo Resposta": format_sla_string(time_reply_sec),
+            "Tempo Resolução": format_sla_string(time_close_sec),
+            "CSAT Nota": (c.get('conversation_rating') or {}).get('rating'),
+            "CSAT Comentario": (c.get('conversation_rating') or {}).get('remark')
+        }
         
         attrs = c.get('custom_attributes', {})
         for key, value in attrs.items():
