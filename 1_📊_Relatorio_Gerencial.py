@@ -253,10 +253,15 @@ if 'df_final' in st.session_state:
 
     st.divider()
 
-    # Abas
-    tab_graf, tab_equipe, tab_cross, tab_motivos, tab_csat, tab_tempo, tab_tabela = st.tabs(["📊 Distribuição", "👥 Equipe & Performance", "🔀 Cruzamentos", "🔗 Top Motivos", "⭐ CSAT / DSAT", "⏱️ SLA", "📋 Dados"])
+    # Menu de Navegação à prova de falhas
+    aba_selecionada = st.radio(
+        "Navegação", 
+        ["📊 Distribuição", "👥 Equipe & Performance", "🔀 Cruzamentos", "🔗 Top Motivos", "⭐ CSAT / DSAT", "⏱️ SLA", "📋 Dados"],
+        horizontal=True,
+        label_visibility="collapsed"
+    )
 
-    with tab_graf:
+    if aba_selecionada == "📊 Distribuição":
         c_filt1, c_filt2 = st.columns([3, 1])
         with c_filt1:
             graf_sel = st.selectbox("Selecione o Atributo:", cols_usuario, key="sel_graf_dist")
@@ -287,7 +292,7 @@ if 'df_final' in st.session_state:
         else:
             st.warning("Selecione atributos no topo da página.")
 
-    with tab_equipe:
+    if aba_selecionada == "👥 Equipe & Performance":
         st.subheader("Volume de Conversas")
         vol = df['Atendente'].value_counts().reset_index()
         vol.columns = ['Agente', 'Volume']
@@ -312,7 +317,7 @@ if 'df_final' in st.session_state:
         else:
             st.warning("Dados de tempo não disponíveis.")
 
-    with tab_cross:
+    if aba_selecionada == "🔀 Cruzamentos":
         qtd_cross = st.slider("Quantidade de itens no Ranking:", 5, 50, 10, key="slider_cross")
 
         def plot_stack(df_in, x_col, color_col, title, limit=10):
@@ -339,7 +344,7 @@ if 'df_final' in st.session_state:
         if "Tipo de Atendimento" in df.columns and "Status do atendimento" in df.columns:
             st.plotly_chart(plot_stack(df.dropna(subset=["Tipo de Atendimento", "Status do atendimento"]), "Tipo de Atendimento", "Status do atendimento", "3. Status por Tipo de atendimento", qtd_cross), use_container_width=True)
 
-    with tab_motivos:
+    if aba_selecionada == "🔗 Top Motivos":
         col_m1, col_m2 = "Motivo de Contato", "Motivo 2 (Se houver)"
         if col_m1 in df.columns and col_m2 in df.columns:
             qtd_top = st.slider("Quantidade de Motivos no Ranking:", 5, 50, 10)
@@ -357,7 +362,7 @@ if 'df_final' in st.session_state:
             with st.expander("Ver lista completa"):
                 st.dataframe(rank, use_container_width=True)
 
-    with tab_csat:
+    if aba_selecionada == "⭐ CSAT / DSAT":
         if "CSAT Nota" not in df.columns:
              st.warning("Sem dados.")
         else:
@@ -438,7 +443,7 @@ if 'df_final' in st.session_state:
                     fig2.update_xaxes(title="Quantidade")
                     st.plotly_chart(fig2, use_container_width=True)
 
-    with tab_tempo:
+    if aba_selecionada == "⏱️ SLA":
         st.header("Análise de Tempo")
         col_res = "Tempo Resolução (seg)"
         if col_res in df.columns:
@@ -468,7 +473,7 @@ if 'df_final' in st.session_state:
                     st.plotly_chart(fig_tm, use_container_width=True)
             else: st.warning("Sem dados de tempo.")
 
-    with tab_tabela:
+    if aba_selecionada == "📋 Dados":
         with st.form("form_filtros_tabela"):
             st.write("🔍 Filtros da Pesquisa")
             c1, c2, c3, c4 = st.columns(4)
