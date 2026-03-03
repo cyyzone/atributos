@@ -6,13 +6,13 @@ import plotly.express as px
 from datetime import datetime, timedelta
 from io import BytesIO
 
-# --- IMPORTAÇÃO DO UTILS ---
+# Importação do utils
 from utils import check_password, logout_button
 
-# --- CONFIGURAÇÕES ---
+# Configurações
 st.set_page_config(page_title="Relatório Gerencial Intercom", page_icon="📊", layout="wide")
 
-# --- BLOQUEIO DE SENHA ---
+# Bloqueio de senha
 usuario = check_password()
 
 if not usuario:
@@ -25,7 +25,7 @@ if usuario == "analista":
 
 WORKSPACE_ID = "xwvpdtlu"
 
-# --- AUTENTICAÇÃO INTERCOM ---
+# Autenticação Intercom
 try:
     INTERCOM_ACCESS_TOKEN = st.secrets["INTERCOM_TOKEN"]
 except:
@@ -37,7 +37,7 @@ if not INTERCOM_ACCESS_TOKEN:
 
 HEADERS = {"Authorization": f"Bearer {INTERCOM_ACCESS_TOKEN}", "Accept": "application/json"}
 
-# --- FUNÇÕES ---
+# Funções
 
 def format_sla_string(seconds):
     if not seconds or pd.isna(seconds) or seconds == 0: return "-"
@@ -74,7 +74,6 @@ def get_all_admins():
     except:
         return {}
 
-#--Função principal, por favor não mecher!
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_conversations(start_date, end_date, team_ids=None):
     url = "https://api.intercom.io/conversations/search"
@@ -176,7 +175,7 @@ def gerar_excel_multias(df, colunas_selecionadas):
         writer.sheets['Base Completa'].set_column('A:A', 18) 
     return output.getvalue()
 
-# --- INTERFACE ---
+# Interface
 
 st.title("📊 Relatório Gerencial: Atributos & SLA")
 
@@ -212,7 +211,7 @@ if 'df_final' in st.session_state:
     df = st.session_state['df_final']
     st.divider()
     
-    # --- SELEÇÃO DE COLUNAS ---
+    # Seleção de Colunas
     todas_colunas = list(df.columns)
     COL_EXPANSAO = "Expansão (Passagem de bastão para CSM)"
     sugestao = ["Tipo de Atendimento", COL_EXPANSAO, "Motivo de Contato", "Motivo 2 (Se houver)", "Status do atendimento"]
@@ -221,10 +220,9 @@ if 'df_final' in st.session_state:
     
     cols_usuario = st.multiselect("Atributos para análise:", [c for c in todas_colunas if c not in ignorar], default=padrao)
 
-    # --- KPIs ---
+    # KPIs
     st.markdown("### 📌 Resumo")
     
-    # Ajuste visual: Diminui a fonte e impede o corte do texto longo
     st.markdown("""
         <style>
         div[data-testid="stMetricValue"] {
@@ -255,7 +253,7 @@ if 'df_final' in st.session_state:
 
     st.divider()
 
-    # --- ABAS ---
+    # Abas
     tab_graf, tab_equipe, tab_cross, tab_motivos, tab_csat, tab_tempo, tab_tabela = st.tabs(["📊 Distribuição", "👥 Equipe & Performance", "🔀 Cruzamentos", "🔗 Top Motivos", "⭐ CSAT / DSAT", "⏱️ SLA", "📋 Dados"])
 
     with tab_graf:
@@ -373,7 +371,6 @@ if 'df_final' in st.session_state:
                 
                 st.divider()
                 
-                # --- CONTROLES UNIFICADOS ---
                 c_conf1, c_conf2 = st.columns([2, 1])
                 with c_conf1:
                     ordem_csat = st.selectbox(
@@ -387,25 +384,16 @@ if 'df_final' in st.session_state:
                 eh_dsat = "Piores" in ordem_csat
                 
                 if "Motivo de Contato" in df.columns:
-                    # Agrupa para tirar média e contagem
                     csat_summary = df_csat.groupby("Motivo de Contato")["CSAT Nota"].agg(['mean', 'count']).reset_index()
                     csat_summary.columns = ["Motivo de Contato", "Média", "Qtd"]
                     
-                    # --- GRÁFICO 1: MÉDIA ---
                     st.subheader("1. Média de CSAT")
                     
-                    # Lógica de Ordenação e Filtro:
                     if eh_dsat:
-                        # Queremos ver as PIORES notas (1.0).
-                        # Pegamos os top N menores valores.
                         df_chart1 = csat_summary.sort_values("Média", ascending=True).head(qtd_csat)
-                        # Ordenamos Descending para que o Plotly desenhe os menores no TOPO.
                         df_chart1 = df_chart1.sort_values("Média", ascending=False)
                     else:
-                        # Queremos ver as MELHORES notas (5.0).
-                        # Pegamos os top N maiores valores.
                         df_chart1 = csat_summary.sort_values("Média", ascending=False).head(qtd_csat)
-                        # Ordenamos Ascending para que o Plotly desenhe os maiores no TOPO.
                         df_chart1 = df_chart1.sort_values("Média", ascending=True)
 
                     df_chart1["Label"] = df_chart1.apply(lambda x: f"{x['Média']:.2f} ({int(x['Qtd'])} av.)", axis=1)
@@ -429,13 +417,9 @@ if 'df_final' in st.session_state:
                     
                     st.divider()
                     
-                    # --- GRÁFICO 2: VOLUME ---
                     st.subheader("2. Total de Avaliações (Volume)")
                     
-                    # Lógica de Ordenação por VOLUME (Sempre Maior para Menor)
-                    # Filtramos os Top N mais volumosos.
                     df_chart2 = csat_summary.sort_values("Qtd", ascending=False).head(qtd_csat)
-                    # Ordenamos Ascending para que o Plotly desenhe os maiores no TOPO.
                     df_chart2 = df_chart2.sort_values("Qtd", ascending=True)
                     
                     df_chart2["Label"] = df_chart2["Qtd"].astype(int).astype(str)
@@ -484,7 +468,7 @@ if 'df_final' in st.session_state:
                     st.plotly_chart(fig_tm, use_container_width=True)
             else: st.warning("Sem dados de tempo.")
 
-with tab_tabela:
+    with tab_tabela:
         with st.form("form_filtros_tabela"):
             st.write("🔍 Filtros da Pesquisa")
             c1, c2, c3, c4 = st.columns(4)
