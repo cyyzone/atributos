@@ -165,19 +165,21 @@ if dados_admins:
         st.stop()
 
     # --- INPUTS ---
-    col_analista, col_periodo, col_btn = st.columns([2, 2, 1])
-    
-    with col_analista:
-        usuario_selecionado = st.selectbox("👤 Quem é você?", analistas_filtrados, key="sel_analista")
-    
-    with col_periodo:
-        data_hoje = datetime.now()
-        periodo = st.date_input("Período:", (data_hoje - timedelta(days=7), data_hoje), format="DD/MM/YYYY")
-    
-    with col_btn:
-        st.write("") 
-        st.write("") 
-        btn_atualizar = st.button("🔄 Atualizar", type="primary")
+    with st.form("form_filtros_analista"):
+        col_analista, col_periodo, col_btn = st.columns([2, 2, 1])
+        
+        with col_analista:
+            usuario_selecionado = st.selectbox("👤 Quem é você?", analistas_filtrados, key="sel_analista")
+        
+        with col_periodo:
+            data_hoje = datetime.now()
+            periodo = st.date_input("Período:", (data_hoje - timedelta(days=7), data_hoje), format="DD/MM/YYYY")
+        
+        with col_btn:
+            st.write("") 
+            st.write("") 
+            # Dentro de um form, usamos form_submit_button no lugar de button
+            btn_atualizar = st.form_submit_button("🔄 Atualizar", type="primary", use_container_width=True)
 
     # --- LÓGICA DE BUSCA (SÓ RODA SE APERTAR O BOTÃO) ---
     if btn_atualizar:
