@@ -292,25 +292,31 @@ if 'df_final' in st.session_state:
         else:
             st.warning("Selecione atributos no topo da página.")
 
-    if aba_selecionada == "👥 Equipe & Performance":
-        # --- NOVA SEÇÃO: TAXA DE CLASSIFICAÇÃO ---
-        st.subheader("🎯 Taxa de Classificação (Preenchimento de Motivo)")
-        if "Motivo de Contato" in df.columns:
-            total_geral = len(df)
-            classificados_geral = df["Motivo de Contato"].notna().sum()
+    # --- NOVA SEÇÃO: TAXA DE CLASSIFICAÇÃO ---
+        st.subheader("🎯 Taxa de Classificação (Conversas Resolvidas)")
+        
+        # Filtra apenas os chamados resolvidos
+        if "Status do atendimento" in df.columns:
+            df_calc = df[df["Status do atendimento"] == "Resolvido"].copy()
+        else:
+            df_calc = df.copy()
+
+        if "Motivo de Contato" in df_calc.columns and not df_calc.empty:
+            total_geral = len(df_calc)
+            classificados_geral = df_calc["Motivo de Contato"].notna().sum()
             taxa_geral = (classificados_geral / total_geral * 100) if total_geral > 0 else 0
             
             # Métrica geral e Barra de progresso
             st.metric(
                 "Taxa Geral da Equipe", 
                 f"{taxa_geral:.1f}%", 
-                f"{classificados_geral} de {total_geral} conversas classificadas", 
+                f"{classificados_geral} de {total_geral} conversas resolvidas e classificadas", 
                 delta_color="off"
             )
             st.progress(min(taxa_geral / 100, 1.0))
             
             # Tabela individual por Analista
-            resumo_analistas = df.groupby("Atendente").agg(
+            resumo_analistas = df_calc.groupby("Atendente").agg(
                 Total=('ID', 'count'),
                 Classificados=('Motivo de Contato', lambda x: x.notna().sum())
             ).reset_index()
@@ -321,14 +327,16 @@ if 'df_final' in st.session_state:
             # Ordenar pelos que têm a maior taxa no topo
             resumo_analistas = resumo_analistas.sort_values(by="Taxa (%)", ascending=False)
             
-            # Adicionar o símbolo de % para ficar bonito na tabela
+            # Adicionar o símbolo de % para apresentar na tabela
             resumo_analistas_view = resumo_analistas.copy()
             resumo_analistas_view['Taxa (%)'] = resumo_analistas_view['Taxa (%)'].apply(lambda x: f"{x}%")
             
-            st.write("**Desempenho Individual:**")
+            st.write("**Desempenho Individual (Apenas Resolvidos):**")
             st.dataframe(resumo_analistas_view, use_container_width=True, hide_index=True)
         else:
-            st.warning("O atributo 'Motivo de Contato' não está disponível nestes dados.")
+            st.warning("Sem dados de conversas resolvidas para calcular a taxa.")
+            
+        st.divider()
             
         st.divider()
         
