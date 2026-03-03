@@ -293,11 +293,12 @@ if 'df_final' in st.session_state:
             st.warning("Selecione atributos no topo da página.")
 
     if aba_selecionada == "👥 Equipe & Performance":
-        st.subheader("🎯 Taxa de Classificação (Conversas Resolvidas)")
+        # --- NOVA SEÇÃO: TAXA DE CLASSIFICAÇÃO ---
+        st.subheader("🎯 Taxa de Classificação (Conversas Fechadas)")
         
-        # Filtra apenas os chamados resolvidos
-        if "Status do atendimento" in df.columns:
-            df_calc = df[df["Status do atendimento"] == "Resolvido"].copy()
+        # Filtra apenas os chamados com o Estado nativo "Fechada" (closed)
+        if "Estado" in df.columns:
+            df_calc = df[df["Estado"] == "Fechada"].copy()
         else:
             df_calc = df.copy()
 
@@ -310,7 +311,7 @@ if 'df_final' in st.session_state:
             st.metric(
                 "Taxa Geral da Equipe", 
                 f"{taxa_geral:.1f}%", 
-                f"{classificados_geral} de {total_geral} conversas resolvidas e classificadas", 
+                f"{classificados_geral} de {total_geral} conversas fechadas classificadas", 
                 delta_color="off"
             )
             st.progress(min(taxa_geral / 100, 1.0))
@@ -331,12 +332,10 @@ if 'df_final' in st.session_state:
             resumo_analistas_view = resumo_analistas.copy()
             resumo_analistas_view['Taxa (%)'] = resumo_analistas_view['Taxa (%)'].apply(lambda x: f"{x}%")
             
-            st.write("**Desempenho Individual (Apenas Resolvidos):**")
+            st.write("**Desempenho Individual (Apenas Fechadas):**")
             st.dataframe(resumo_analistas_view, use_container_width=True, hide_index=True)
         else:
-            st.warning("Sem dados de conversas resolvidas para calcular a taxa.")
-            
-        st.divider()
+            st.warning("Sem dados de conversas fechadas para calcular a taxa ou o atributo 'Motivo de Contato' não existe.")
             
         st.divider()
         
