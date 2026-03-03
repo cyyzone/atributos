@@ -484,8 +484,8 @@ if 'df_final' in st.session_state:
                     st.plotly_chart(fig_tm, use_container_width=True)
             else: st.warning("Sem dados de tempo.")
 
-   with tab_tabela:
-        # --- 1. CRIAR AS COLUNAS DE FILTROS ---
+with tab_tabela:
+        # --- 1. CRIAR AS CAIXAS DE FILTROS ---
         c1, c2, c3, c4, c_exp = st.columns(5)
         
         with c1:
@@ -512,11 +512,6 @@ if 'df_final' in st.session_state:
                 sel_status = st.multiselect("🚦 Status:", status_unicos)
             else:
                 sel_status = []
-                
-        with c_exp:
-            st.write("") # Espaço em branco para alinhar o botão com as caixas de texto
-            excel = gerar_excel_multias(df, cols_usuario)
-            st.download_button("📥 Baixar Excel", data=excel, file_name="relatorio_gerencial.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary", use_container_width=True)
 
         # --- 2. APLICAR OS FILTROS NO DATAFRAME ---
         df_view = df.copy()
@@ -532,8 +527,15 @@ if 'df_final' in st.session_state:
             
         if sel_status:
             df_view = df_view[df_view["Status do atendimento"].isin(sel_status)]
+
+        # --- 3. CRIAR O BOTÃO DE EXCEL (AGORA COM DADOS FILTRADOS) ---
+        with c_exp:
+            st.write("") # Espaço em branco para alinhar o botão
+            # AQUI ESTÁ A MUDANÇA: Usamos df_view no lugar de df
+            excel = gerar_excel_multias(df_view, cols_usuario)
+            st.download_button("📥 Baixar Excel", data=excel, file_name="relatorio_filtrado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary", use_container_width=True)
             
-        # --- 3. EXIBIR A TABELA FILTRADA ---
+        # --- 4. EXIBIR A TABELA FILTRADA NA TELA ---
         st.caption(f"Exibindo **{len(df_view)}** conversas após os filtros.")
         
         cols_display = ["Data", "Atendente", "Link", "Tempo Resolução"] + cols_usuario
