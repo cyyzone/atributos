@@ -485,7 +485,6 @@ if 'df_final' in st.session_state:
             else: st.warning("Sem dados de tempo.")
 
 with tab_tabela:
-        # 1. CRIAR O FORMULÁRIO DE FILTROS
         with st.form("form_filtros_tabela"):
             st.write("🔍 Filtros da Pesquisa")
             c1, c2, c3, c4 = st.columns(4)
@@ -515,10 +514,8 @@ with tab_tabela:
                 else:
                     sel_status = []
 
-            # O botão que envia todos os filtros de uma vez
             aplicar = st.form_submit_button("Aplicar Filtros")
 
-        # 2. APLICAR OS FILTROS NO DATAFRAME
         df_view = df.copy()
         
         if sel_agentes:
@@ -533,7 +530,6 @@ with tab_tabela:
         if sel_status:
             df_view = df_view[df_view["Status do atendimento"].isin(sel_status)]
 
-        # 3. EXIBIR A TABELA E O BOTÃO DE EXCEL
         c_resumo, c_botao = st.columns([4, 1])
         
         with c_resumo:
