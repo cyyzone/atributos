@@ -138,6 +138,7 @@ def process_data(conversas, mapping, admin_map):
             "Estado": estado_pt, # Esta é a nova linha que adicionamos
             "Atendente": assignee_name,
             "Link": link,
+             }
         
         attrs = c.get('custom_attributes', {})
         for key, value in attrs.items():
