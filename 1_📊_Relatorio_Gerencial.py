@@ -485,20 +485,57 @@ if 'df_final' in st.session_state:
             else: st.warning("Sem dados de tempo.")
 
     with tab_tabela:
-        c_filter, c_export = st.columns([3, 1])
+        # --- 1. CRIAR AS COLUNAS DE FILTROS ---
+        c1, c2, c3, c4, c_exp = st.columns(5)
         
-        with c_filter:
+        with c1:
             agentes_unicos = sorted(df["Atendente"].astype(str).unique())
-            sel_agentes = st.multiselect("Filtrar por Analista:", agentes_unicos, key="sel_agente_final")
-
-        with c_export:
-            st.write("") 
+            sel_agentes = st.multiselect("👤 Analista:", agentes_unicos, key="sel_agente_final")
+            
+        with c2:
+            # Proteção: Só mostra se a coluna existir nos dados do dia
+            if "Motivo de Contato" in df.columns:
+                motivos_unicos = sorted(df["Motivo de Contato"].dropna().astype(str).unique())
+                sel_motivos = st.multiselect("🎯 Motivo:", motivos_unicos)
+            else:
+                sel_motivos = []
+                
+        with c3:
+            if "Tipo de Atendimento" in df.columns:
+                tipos_unicos = sorted(df["Tipo de Atendimento"].dropna().astype(str).unique())
+                sel_tipos = st.multiselect("💬 Tipo:", tipos_unicos)
+            else:
+                sel_tipos = []
+                
+        with c4:
+            if "Status do atendimento" in df.columns:
+                status_unicos = sorted(df["Status do atendimento"].dropna().astype(str).unique())
+                sel_status = st.multiselect("🚦 Status:", status_unicos)
+            else:
+                sel_status = []
+                
+        with c_exp:
+            st.write("") # Espaço em branco para empurrar o botão para baixo e alinhar
             excel = gerar_excel_multias(df, cols_usuario)
-            st.download_button("📥 Baixar Excel", data=excel, file_name="relatorio_gerencial.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
+            st.download_button("📥 Baixar Excel", data=excel, file_name="relatorio_gerencial.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary", use_container_width=True)
 
+        # --- 2. APLICAR OS FILTROS NO DATAFRAME ---
         df_view = df.copy()
+        
         if sel_agentes:
             df_view = df_view[df_view["Atendente"].isin(sel_agentes)]
+            
+        if sel_motivos:
+            df_view = df_view[df_view["Motivo de Contato"].isin(sel_motivos)]
+            
+        if sel_tipos:
+            df_view = df_view[df_view["Tipo de Atendimento"].isin(sel_tipos)]
+            
+        if sel_status:
+            df_view = df_view[df_view["Status do atendimento"].isin(sel_status)]
+            
+        # --- 3. EXIBIR A TABELA FILTRADA ---
+        st.caption(f"Exibindo **{len(df_view)}** conversas após os filtros.")
         
         cols_display = ["Data", "Atendente", "Link", "Tempo Resolução"] + cols_usuario
         cols_existentes = [c for c in cols_display if c in df_view.columns]
