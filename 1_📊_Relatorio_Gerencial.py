@@ -484,7 +484,7 @@ if 'df_final' in st.session_state:
                     st.plotly_chart(fig_tm, use_container_width=True)
             else: st.warning("Sem dados de tempo.")
 
-with tab_tabela:
+  with tab_tabela:
         # 1. CRIAR O FORMULÁRIO DE FILTROS
         with st.form("form_filtros_tabela"):
             st.write("🔍 Filtros da Pesquisa")
