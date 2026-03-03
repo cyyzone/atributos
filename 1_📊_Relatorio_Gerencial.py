@@ -119,6 +119,11 @@ def process_data(conversas, mapping, admin_map):
         admin_id = c.get('admin_assignee_id')
         assignee_name = admin_map.get(str(admin_id), f"ID {admin_id}") if admin_id else "Não atribuído"
 
+        # Captura e traduz o estado nativo da conversa
+        estado_raw = c.get('state', '')
+        mapa_estados = {'closed': 'Fechada', 'open': 'Aberta', 'snoozed': 'Pausada'}
+        estado_pt = mapa_estados.get(estado_raw, estado_raw.capitalize())
+
         stats = c.get('statistics') or {}
         time_reply_sec = stats.get('time_to_admin_reply') or stats.get('response_time')
         time_close_sec = stats.get('time_to_close')
@@ -130,15 +135,9 @@ def process_data(conversas, mapping, admin_map):
             "ID": c['id'],
             "timestamp_real": c['created_at'], 
             "Data": datetime.fromtimestamp(c['created_at']).strftime("%d/%m/%Y %H:%M"),
+            "Estado": estado_pt, # Esta é a nova linha que adicionamos
             "Atendente": assignee_name,
             "Link": link,
-            "Tempo Resposta (seg)": time_reply_sec,
-            "Tempo Resolução (seg)": time_close_sec,
-            "Tempo Resposta": format_sla_string(time_reply_sec),
-            "Tempo Resolução": format_sla_string(time_close_sec),
-            "CSAT Nota": (c.get('conversation_rating') or {}).get('rating'),
-            "CSAT Comentario": (c.get('conversation_rating') or {}).get('remark')
-        }
         
         attrs = c.get('custom_attributes', {})
         for key, value in attrs.items():
@@ -168,7 +167,7 @@ def gerar_excel_multias(df, colunas_selecionadas):
                     resumo.to_excel(writer, index=False, sheet_name=nome_aba)
                 except: pass
 
-        cols_fixas = ["Data", "Atendente", "Tempo Resposta", "Tempo Resolução", "CSAT Nota", "CSAT Comentario", "Link"]
+        cols_fixas = ["Data", "Estado", "Atendente", "Tempo Resposta", "Tempo Resolução", "CSAT Nota", "CSAT Comentario", "Link"]
         cols_finais = cols_fixas + [c for c in colunas_selecionadas if c not in cols_fixas]
         cols_existentes = [c for c in cols_finais if c in df.columns]
         df[cols_existentes].to_excel(writer, index=False, sheet_name='Base Completa')
@@ -575,7 +574,7 @@ if 'df_final' in st.session_state:
             excel = gerar_excel_multias(df_view, cols_usuario)
             st.download_button("📥 Baixar Excel", data=excel, file_name="relatorio_filtrado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary", use_container_width=True)
         
-        cols_display = ["Data", "Atendente", "Link", "Tempo Resolução"] + cols_usuario
+        cols_display = ["Data", "Estado", "Atendente", "Link", "Tempo Resolução"] + cols_usuario
         cols_existentes = [c for c in cols_display if c in df_view.columns]
         
         st.dataframe(
